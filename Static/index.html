@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <title>Webbot</title>
+</head>
+<body>
+  <h2>Stel een vraag aan de bot</h2>
+  <input type="text" id="input" placeholder="Typ hier je vraag..." />
+  <button onclick="send()">Verstuur</button>
+
+  <p id="reply"></p>
+  <audio id="audio" controls style="margin-top:10px;"></audio>
+
+  <script>
+    async function send() {
+      const input = document.getElementById("input").value;
+      const res = await fetch("/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: input })
+      });
+      const data = await res.json();
+      document.getElementById("reply").innerText = data.reply;
+      document.getElementById("audio").src = data.audio_url;
+    }
+  </script>
+</body>
+</html>
