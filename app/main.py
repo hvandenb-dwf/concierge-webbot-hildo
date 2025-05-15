@@ -41,3 +41,5 @@ async def ask(request: Request):
     os.remove(tmp_path)
 
     return {"text": reply, "audio_url": audio_url}
+# temp update om commit te forceren
+
