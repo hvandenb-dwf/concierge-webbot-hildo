@@ -1,22 +1,19 @@
-from elevenlabs.client import ElevenLabs
-from elevenlabs import VoiceSettings
-import tempfile
 import os
+from elevenlabs import ElevenLabs
+from elevenlabs.client import VoiceSettings
 
 client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
 
-def text_to_speech(text: str) -> str:
-    audio_stream = client.generate(
-        text=text,
-        voice="Rachel",
-        model="eleven_multilingual_v2",
-        voice_settings=VoiceSettings(stability=0.4, similarity_boost=0.8),
-        stream=True
-    )
+VOICE_ID = os.getenv("ELEVEN_VOICE_ID") or "Rachel"  # Of gebruik je eigen voice ID
 
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    for chunk in audio_stream:
-        temp_file.write(chunk)
-    temp_file.close()
-
-    return temp_file.name
+def text_to_speech(text: str) -> bytes:
+    try:
+        audio_stream = client.text_to_speech.convert_as_stream(
+            voice_id=VOICE_ID,
+            model_id="eleven_multilingual_v2",
+            text=text,
+            voice_settings=VoiceSettings(stability=0.5, similarity_boost=0.75)
+        )
+        return b"".join(audio_stream)
+    except Exception as e:
+        return f"Fout bij text-to-speech: {e}".encode()
