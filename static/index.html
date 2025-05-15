@@ -2,26 +2,27 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8" />
-  <title>Webbot</title>
+  <title>Voicebot</title>
 </head>
 <body>
-  <h2>Stel een vraag aan de bot</h2>
-  <input type="text" id="input" placeholder="Typ hier je vraag..." />
+  <h2>Stel je vraag aan de voicebot:</h2>
+  <input type="text" id="input" placeholder="Typ hier je vraag..." style="width: 300px;" />
   <button onclick="send()">Verstuur</button>
 
+  <h3>Antwoord:</h3>
   <p id="reply"></p>
-  <audio id="audio" controls style="margin-top:10px;"></audio>
+  <audio id="audio" controls></audio>
 
   <script>
     async function send() {
-      const input = document.getElementById("input").value;
+      const prompt = document.getElementById("input").value;
       const res = await fetch("/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: input })
+        body: JSON.stringify({ prompt })
       });
       const data = await res.json();
-      document.getElementById("reply").innerText = data.reply;
+      document.getElementById("reply").innerText = data.text;
       document.getElementById("audio").src = data.audio_url;
     }
   </script>
