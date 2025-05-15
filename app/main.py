@@ -6,6 +6,8 @@ from app.tts import text_to_speech
 from app.cloudinary_util import upload_audio
 
 app = FastAPI()
+
+# Serve frontend files (HTML, JS, CSS)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
@@ -17,13 +19,16 @@ async def ask(request: Request):
     data = await request.json()
     user_input = data.get("text")
 
-    # Haal antwoord op van GPT
+    # GPT-antwoorden ophalen
     bot_reply = get_bot_reply(user_input)
 
-    # Genereer audio met ElevenLabs
+    # Spraak genereren met ElevenLabs
     audio_path = text_to_speech(bot_reply)
 
-    # Upload audio naar Cloudinary
+    # Upload mp3 naar Cloudinary
     audio_url = upload_audio(audio_path)
 
-    return {"reply": bot_reply, "audio_url": audio_url}
+    return {
+        "reply": bot_reply,
+        "audio_url": audio_url
+    }
