@@ -3,3 +3,4 @@ uvicorn
 openai
 elevenlabs
 cloudinary
+cloudinary>=1.34.0
