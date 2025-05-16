@@ -2,20 +2,20 @@ import cloudinary
 import cloudinary.uploader
 import os
 
-# Cloudinary config uit environment
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
     api_key=os.getenv("CLOUDINARY_API_KEY"),
-    api_secret=os.getenv("CLOUDINARY_API_SECRET")
+    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+    secure=True
 )
 
-def upload_to_cloudinary(file_path: str) -> str:
-    try:
-        result = cloudinary.uploader.upload(
-            file_path,
-            resource_type="video",  # nodig voor .mp3
-            folder="voicebot"
-        )
-        return result["secure_url"]
-    except Exception as e:
-        return f"Fout bij upload: {e}"
+def upload_audio_to_cloudinary(filepath: str) -> str:
+    response = cloudinary.uploader.upload(
+        filepath,
+        resource_type="video",  # Cloudinary classificeert audio als "video"
+        folder="voicebot-audio",
+        use_filename=True,
+        unique_filename=True,
+        overwrite=False
+    )
+    return response["secure_url"]
