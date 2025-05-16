@@ -3,7 +3,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from app.bot_logic import generate_bot_reply
 from app.tts import text_to_speech
-from app.cloudinary_util import upload_to_cloudinary
+from app.cloudinary_util import upload_audio_to_cloudinary
 import tempfile
 import os
 
@@ -35,7 +35,8 @@ async def ask(request: Request):
         tmp_path = tmp.name
 
     # Upload to Cloudinary
-    audio_url = upload_to_cloudinary(tmp_path)
+    audio_url = upload_audio_to_cloudinary(tmp_path)
+
 
     # Clean up temp file
     os.remove(tmp_path)
