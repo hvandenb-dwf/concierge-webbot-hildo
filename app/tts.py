@@ -15,7 +15,7 @@ voice_settings = VoiceSettings(
     use_speaker_boost=True,
 )
 
-def generate_audio(text: str, filename: str = "test_output.mp3") -> str:
+def text_to_speech(text: str, filename: str = "test_output.mp3") -> str:
     try:
         print("🎤 Start TTS generatie...")
         audio = eleven_client.generate(
@@ -44,5 +44,5 @@ def generate_audio(text: str, filename: str = "test_output.mp3") -> str:
         return cloudinary_url
 
     except Exception as e:
-        print(f"❌ Fout in generate_audio: {e}")
+        print(f"❌ Fout in text_to_speech: {e}")
         raise
