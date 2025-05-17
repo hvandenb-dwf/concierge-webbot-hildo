@@ -10,14 +10,13 @@ cloudinary.config(
 )
 
 def upload_audio_to_cloudinary(filepath: str) -> str:
-   response = cloudinary.uploader.upload(
-    filepath,
-    resource_type="video",  # mp3 valt onder video
-    folder="voicebot-audio",
-    use_filename=True,
-    unique_filename=True,
-    overwrite=False,
-    upload_preset="concierge_voicebot"  # <- dit moet erbij
-)
-
+    response = cloudinary.uploader.upload(
+        filepath,
+        resource_type="video",  # mp3 valt onder 'video'
+        folder="voicebot-audio",
+        use_filename=True,
+        unique_filename=True,
+        overwrite=False,
+        upload_preset="concierge_voicebot"  # essentieel bij signed preset
+    )
     return response["secure_url"]
