@@ -26,7 +26,7 @@ def text_to_speech(text: str, filename: str = "test_output.mp3") -> str:
             stream=True  # Belangrijk voor .read()
         )
 
-        audio_bytes = audio_stream.read()
+        audio_bytes = bytes(audio)
         print(f"🔊 Lengte audio-output: {len(audio_bytes)} bytes")
 
         if len(audio_bytes) < 100:
