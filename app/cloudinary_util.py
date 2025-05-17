@@ -10,13 +10,13 @@ cloudinary.config(
 )
 
 def upload_audio_to_cloudinary(filepath: str) -> str:
-
     response = cloudinary.uploader.upload(
         filepath,
-        resource_type="video",  # Cloudinary classificeert audio als "video"
+        resource_type="video",
         folder="voicebot-audio",
         use_filename=True,
         unique_filename=True,
-        overwrite=False
+        overwrite=False,
+        format="mp3"  # <-- belangrijk
     )
     return response["secure_url"]
