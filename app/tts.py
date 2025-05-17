@@ -22,8 +22,7 @@ def text_to_speech(text: str, filename: str = "test_output.mp3") -> str:
             text=text,
             voice=voice_id,
             model="eleven_multilingual_v2",
-            voice_settings=voice_settings,
-            stream=True  # Belangrijk voor .read()
+            voice_settings=voice_settings,            
         )
 
         audio_bytes = bytes(audio)
