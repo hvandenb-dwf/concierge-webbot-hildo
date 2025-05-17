@@ -18,14 +18,15 @@ voice_settings = VoiceSettings(
 def text_to_speech(text: str, filename: str = "test_output.mp3") -> str:
     try:
         print("🎤 Start TTS generatie...")
-        audio = eleven_client.generate(
+        audio_stream = eleven_client.generate(
             text=text,
             voice=voice_id,
             model="eleven_multilingual_v2",
-            voice_settings=voice_settings
+            voice_settings=voice_settings,
+            stream=True  # Belangrijk voor .read()
         )
 
-        audio_bytes = bytes(audio)
+        audio_bytes = audio_stream.read()
         print(f"🔊 Lengte audio-output: {len(audio_bytes)} bytes")
 
         if len(audio_bytes) < 100:
