@@ -1,53 +1,23 @@
-
-from elevenlabs.client import ElevenLabs
-from elevenlabs import VoiceSettings
 import os
-from app.cloudinary_util import upload_audio_to_cloudinary
+from elevenlabs import generate
 
-# Initialiseer ElevenLabs client
-eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
+def text_to_speech(text: str, filename: str = "test_output.mp3") -> bytes:
+    print("🎤 Start TTS generatie...")
 
-voice_id = os.getenv("ELEVEN_VOICE_ID")
+    audio_generator = generate(
+        text=text,
+        voice=os.getenv("ELEVEN_VOICE_ID"),
+        model="eleven_multilingual_v2",
+        api_key=os.getenv("ELEVEN_API_KEY"),
+        stream=False,
+        output_format="mp3"
+    )
 
-voice_settings = VoiceSettings(
-    stability=0.5,
-    similarity_boost=0.7,
-    style=0.0,
-    use_speaker_boost=True,
-)
+    audio_bytes = b"".join(audio_generator)
+    print(f"🔊 Lengte audio-output: {len(audio_bytes)} bytes")
 
-def text_to_speech(text: str, filename: str = "test_output.mp3") -> str:
-    try:
-        print("🎤 Start TTS generatie...")
+    with open(filename, "wb") as f:
+        f.write(audio_bytes)
 
-        # Genereer audio via ElevenLabs in mp3 formaat als bytes
-        audio_bytes = eleven_client.generate(
-            text=text,
-            voice=voice_id,
-            model="eleven_multilingual_v2",
-            voice_settings=voice_settings,
-            stream=False,
-            output_format="mp3"  # zorgt dat het bytes zijn
-        )
-
-        print(f"📦 Type audio_bytes: {type(audio_bytes)}")
-        print(f"🔊 Lengte audio-output: {len(audio_bytes)} bytes")
-
-        if not isinstance(audio_bytes, bytes) or len(audio_bytes) < 100:
-            raise ValueError("⚠️ Audio-output is ongeldig of leeg. TTS mogelijk mislukt.")
-
-        with open(filename, "wb") as f:
-            f.write(audio_bytes)
-
-        print(f"✅ Audio opgeslagen als: {filename}")
-
-        # Upload naar Cloudinary
-        print("☁️ Upload naar Cloudinary gestart...")
-        cloudinary_url = upload_audio_to_cloudinary(filename)
-        print(f"✅ Upload succesvol: {cloudinary_url}")
-
-        return cloudinary_url
-
-    except Exception as e:
-        print(f"❌ Fout in text_to_speech: {e}")
-        raise
+    print(f"✅ Audio opgeslagen als: {filename}")
+    return audio_bytes
