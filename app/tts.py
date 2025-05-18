@@ -20,19 +20,21 @@ def text_to_speech(text: str, filename: str = "test_output.mp3") -> str:
     try:
         print("🎤 Start TTS generatie...")
 
-        # Genereer audio via ElevenLabs
+        # Genereer audio via ElevenLabs in mp3 formaat als bytes
         audio_bytes = eleven_client.generate(
             text=text,
             voice=voice_id,
             model="eleven_multilingual_v2",
             voice_settings=voice_settings,
-            stream=False
+            stream=False,
+            output_format="mp3"  # zorgt dat het bytes zijn
         )
 
+        print(f"📦 Type audio_bytes: {type(audio_bytes)}")
         print(f"🔊 Lengte audio-output: {len(audio_bytes)} bytes")
 
-        if len(audio_bytes) < 100:
-            raise ValueError("⚠️ Audio-output is te klein of leeg. TTS mogelijk mislukt.")
+        if not isinstance(audio_bytes, bytes) or len(audio_bytes) < 100:
+            raise ValueError("⚠️ Audio-output is ongeldig of leeg. TTS mogelijk mislukt.")
 
         with open(filename, "wb") as f:
             f.write(audio_bytes)
