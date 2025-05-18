@@ -21,16 +21,13 @@ def text_to_speech(text: str, filename: str = "test_output.mp3") -> str:
         print("🎤 Start TTS generatie...")
 
         # Genereer audio via ElevenLabs
-        audio = eleven_client.generate(
+        audio_bytes = eleven_client.generate(
             text=text,
             voice=voice_id,
             model="eleven_multilingual_v2",
             voice_settings=voice_settings,
             stream=False
         )
-
-        # Zet audio (generator) om naar bytes
-        audio_bytes = b"".join(audio)
 
         print(f"🔊 Lengte audio-output: {len(audio_bytes)} bytes")
 
