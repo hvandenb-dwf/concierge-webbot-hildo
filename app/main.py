@@ -48,4 +48,72 @@ async def ask(request: Request):
         print(f"📥 Ontvangen user_input: {user_input!r}")
 
         if not user_input or not isinstance(user_input, str):
-            print("⚠️ Ongeldige of lege invoer
+            print("⚠️ Ongeldige of lege invoer ontvangen.")
+            return JSONResponse(content={"error": "Ongeldige invoer"}, status_code=400)
+
+        reply = generate_bot_reply(user_input)
+        print(f"🧠 GPT antwoord: {reply!r}")
+
+        if not reply or not isinstance(reply, str):
+            return JSONResponse(content={"error": "Geen geldig antwoord gegenereerd."}, status_code=500)
+
+        audio_bytes = text_to_speech(reply)
+        audio_url = upload_audio_to_cloudinary(audio_bytes, public_id=f"reply_{uuid4()}")
+
+        return JSONResponse(content={
+            "reply": reply,
+            "audio_url": audio_url
+        })
+
+    except Exception as e:
+        print(f"❌ Fout in POST /ask: {e}")
+        return JSONResponse(content={"error": "Serverfout"}, status_code=500)
+
+# === Functies ===
+
+def generate_bot_reply(user_input: str) -> str:
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "Je bent een behulpzame conciërge."},
+                {"role": "user", "content": user_input}
+            ]
+        )
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        print(f"❌ Fout bij generate_bot_reply: {e}")
+        return "Er ging iets mis bij het genereren van een antwoord."
+
+
+def text_to_speech(text: str) -> bytes:
+    try:
+        print("🎙️ Start TTS generatie...")
+        audio = eleven_client.text_to_speech(
+            voice_id=voice_id,
+            text=text,
+            model="eleven_multilingual_v2",
+            voice_settings=voice_settings,
+            output_format="mp3_44100"
+        )
+        return audio
+    except Exception as e:
+        print(f"❌ Fout bij text_to_speech: {e}")
+        raise
+
+
+def upload_audio_to_cloudinary(audio_bytes: bytes, public_id: str = None) -> str:
+    try:
+        print("☁️ Upload naar Cloudinary...")
+        result = cloudinary.uploader.upload(
+            file=audio_bytes,
+            resource_type="video",  # mp3 vereist dit
+            public_id=public_id,
+            overwrite=True,
+            format="mp3"
+        )
+        return result["secure_url"]
+    except Exception as e:
+        print(f"❌ Fout bij Cloudinary upload: {e}")
+        raise
