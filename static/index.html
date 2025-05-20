@@ -1,35 +1,47 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-    <meta charset="UTF-8" />
-    <title>Conciërge Voicebot</title>
+  <meta charset="UTF-8" />
+  <title>Conciërge</title>
 </head>
 <body>
-    <h1>Conciërge</h1>
+  <h1>Conciërge</h1>
 
-    <input type="text" id="userInput" placeholder="Stel je vraag..." />
-    <button onclick="sendQuestion()">Verstuur</button>
+  <input type="text" id="userInput" placeholder="Stel je vraag..." />
+  <button onclick="sendQuestion()">Verstuur</button>
 
-    <p><strong>Antwoord:</strong> <span id="replyText"></span></p>
-    <audio id="audioPlayer" controls style="display:none;"></audio>
+  <p><strong>Antwoord:</strong> <span id="replyText"></span></p>
+  <audio id="audioPlayer" controls style="display:none;"></audio>
 
-    <script>
-        async function sendQuestion() {
-            const input = document.getElementById("userInput").value;
+  <!-- ✅ JavaScript helemaal onderaan zetten -->
+  <script>
+    async function sendQuestion() {
+      const input = document.getElementById("userInput").value;
 
-            const response = await fetch("/ask", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: input })
-            });
+      try {
+        const response = await fetch("/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: input })
+        });
 
-            const data = await response.json();
+        const data = await response.json();
 
-            if (response.ok) {
-                document.getElementById("replyText").textContent = data.reply;
-                const audio = document.getElementById("audioPlayer");
-                audio.src = data.audio_url;
-                audio.style.display = "block";
-                audio.play();
-            } else {
-                document.getElementById("replyText").textContent = "❌ " + (data.error || "Er ging iets mis
+        if (response.ok) {
+          document.getElementById("replyText").textContent = data.reply;
+          const audio = document.getElementById("audioPlayer");
+          audio.src = data.audio_url;
+          audio.style.display = "block";
+          audio.play();
+        } else {
+          document.getElementById("replyText").textContent = "❌ Serverfout: " + (data.error || "onbekende fout");
+          console.error("API fout:", data);
+        }
+      } catch (err) {
+        document.getElementById("replyText").textContent = "❌ Netwerkfout: kan geen verbinding maken.";
+        console.error("Verzoek mislukt:", err);
+      }
+    }
+  </script>
+</body>
+</html>
