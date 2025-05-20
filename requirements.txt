@@ -1,4 +1,4 @@
 fastapi
 openai
-elevenlabs==0.2.28
+elevenlabs==0.2.27
 cloudinary
