@@ -1,52 +1,35 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="nl">
 <head>
-    <meta charset="UTF-8">
-    <title>Voicebot Test</title>
+    <meta charset="UTF-8" />
+    <title>Conciërge Voicebot</title>
 </head>
 <body>
-    <h1>Test de Voicebot</h1>
-    <form id="ask-form">
-        <label for="question">Stel een vraag:</label>
-        <input type="text" id="question" name="question" required />
-        <button type="submit">Verstuur</button>
-    </form>
-    <p id="status"></p>
-    <audio id="responseAudio" controls></audio>
+    <h1>Conciërge</h1>
+
+    <input type="text" id="userInput" placeholder="Stel je vraag..." />
+    <button onclick="sendQuestion()">Verstuur</button>
+
+    <p><strong>Antwoord:</strong> <span id="replyText"></span></p>
+    <audio id="audioPlayer" controls style="display:none;"></audio>
 
     <script>
-        const form = document.getElementById('ask-form');
-        const status = document.getElementById('status');
-        const audioPlayer = document.getElementById('responseAudio');
+        async function sendQuestion() {
+            const input = document.getElementById("userInput").value;
 
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            status.textContent = '⏳ Antwoord genereren...';
-            audioPlayer.src = '';
+            const response = await fetch("/ask", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: input })
+            });
 
-            const question = document.getElementById('question').value;
+            const data = await response.json();
 
-            try {
-                const response = await fetch('/ask', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ question })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Serverfout: ${response.status}`);
-                }
-
-                const data = await response.json();
-                status.textContent = '✅ Antwoord ontvangen.';
-                audioPlayer.src = data.audio_url;
-                audioPlayer.play();
-            } catch (error) {
-                status.textContent = `❌ Fout: ${error.message}`;
-            }
-        });
-    </script>
-</body>
-</html>
-
-<!-- Laatste test voor push na filter-repo -->
+            if (response.ok) {
+                document.getElementById("replyText").textContent = data.reply;
+                const audio = document.getElementById("audioPlayer");
+                audio.src = data.audio_url;
+                audio.style.display = "block";
+                audio.play();
+            } else {
+                document.getElementById("replyText").textContent = "❌ " + (data.error || "Er ging iets mis
