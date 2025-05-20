@@ -5,17 +5,16 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from openai import OpenAI
-from elevenlabs import ElevenLabs, VoiceSettings
+from elevenlabs import generate, VoiceSettings
 import cloudinary
 import cloudinary.uploader
 
-# === Initialiseer externe API clients ===
+# === API Keys en configuratie ===
 
 # OpenAI
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# ElevenLabs
-eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
+# ElevenLabs settings
 voice_id = os.getenv("ELEVEN_VOICE_ID")
 voice_settings = VoiceSettings(
     stability=0.5,
@@ -39,6 +38,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
 def serve_ui():
     return FileResponse("static/index.html")
+
 
 @app.post("/ask")
 async def ask(request: Request):
@@ -90,12 +90,11 @@ def generate_bot_reply(user_input: str) -> str:
 def text_to_speech(text: str) -> bytes:
     try:
         print("🎙️ Start TTS generatie...")
-        audio = eleven_client.text_to_speech(
-            voice_id=voice_id,
+        audio = generate(
             text=text,
+            voice=voice_id,
             model="eleven_multilingual_v2",
-            voice_settings=voice_settings,
-            output_format="mp3_44100"
+            voice_settings=voice_settings
         )
         return audio
     except Exception as e:
