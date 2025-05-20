@@ -2,3 +2,4 @@ fastapi
 openai
 elevenlabs==0.2.27
 cloudinary
+uvicorn
