@@ -3,4 +3,5 @@ uvicorn
 openai
 cloudinary
 python-dotenv
-elevenlabs @ git+https://github.com/elevenlabs/elevenlabs-python.git@main
+git+https://github.com/elevenlabs/elevenlabs-python.git@main#egg=elevenlabs
+
