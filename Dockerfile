@@ -7,9 +7,9 @@ WORKDIR /app
 # Kopieer requirements
 COPY requirements.txt .
 
-# Installeer systeemafhankelijkheden en Python packages
+# Installeer systeemafhankelijkheden (inclusief git) en Python packages
 RUN apt-get update && \
-    apt-get install -y gcc libffi-dev libssl-dev curl && \
+    apt-get install -y gcc libffi-dev libssl-dev curl git && \
     pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
