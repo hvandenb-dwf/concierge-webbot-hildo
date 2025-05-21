@@ -1,9 +1,11 @@
-def generate_bot_reply(user_input: str) -> str:
-    print(f"📥 Ontvangen input: {user_input!r}")
+from openai import OpenAI
+import os
 
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+def generate_bot_reply(user_input: str) -> str:
     if not user_input or not isinstance(user_input, str):
-        print("⚠️ Ongeldige invoer ontvangen.")
-        return "Sorry, ik heb geen invoer ontvangen. Kunt u dat herhalen?"
+        return "Geen geldige input ontvangen."
 
     try:
         response = client.chat.completions.create(
@@ -13,9 +15,7 @@ def generate_bot_reply(user_input: str) -> str:
                 {"role": "user", "content": user_input}
             ]
         )
-        output = response.choices[0].message.content.strip()
-        print(f"🧠 GPT-antwoord: {output!r}")
-        return output
+        return response.choices[0].message.content.strip()
 
     except Exception as e:
         print(f"❌ Fout bij generate_bot_reply: {e}")
