@@ -1,5 +1,5 @@
 fastapi
-openai
-elevenlabs==0.2.27
-cloudinary
 uvicorn
+openai
+cloudinary
+elevenlabs==0.2.33
