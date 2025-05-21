@@ -2,4 +2,7 @@ fastapi
 uvicorn
 openai
 cloudinary
-elevenlabs==0.2.33
+git+https://github.com/elevenlabs/elevenlabs-python.git@main
+
+
+
