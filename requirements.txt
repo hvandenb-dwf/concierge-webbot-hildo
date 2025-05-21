@@ -2,8 +2,7 @@ fastapi
 uvicorn
 openai
 cloudinary
-git+https://github.com/elevenlabs/elevenlabs-python.git@main
--e git+https://github.com/elevenlabs/elevenlabs-python.git@main#egg=elevenlabs
+git+https://github.com/elevenlabs/elevenlabs-python.git
 
 
 
