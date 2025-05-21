@@ -1,7 +1,7 @@
-fastapi
-uvicorn
-openai
-cloudinary
-python-dotenv
-git+https://github.com/elevenlabs/elevenlabs-python.git@main#egg=elevenlabs
+fastapi==0.115.2
+uvicorn==0.30.0
+openai==1.30.1
+cloudinary==1.44.0
 
+# Installeer ElevenLabs SDK v1.0.4 (ondersteunt ElevenLabsClient & RealtimeTextToSpeechClient)
+git+https://github.com/elevenlabs/elevenlabs-python.git@v1.0.4
