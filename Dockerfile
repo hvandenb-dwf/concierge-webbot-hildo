@@ -11,7 +11,9 @@ COPY requirements.txt .
 RUN apt-get update && \
     apt-get install -y gcc libffi-dev libssl-dev curl git && \
     pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install git+https://github.com/elevenlabs/elevenlabs-python.git@v1.0.4
+
 
 # Kopieer alle app-bestanden
 COPY . .
