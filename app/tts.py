@@ -1,24 +1,24 @@
 import os
-from elevenlabs import generate
+from elevenlabs import ElevenLabsClient, VoiceSettings
 
-def text_to_speech(text: str, filename: str = "output.mp3") -> bytes:
-    print("🎙️ Start TTS generatie...")
+client = ElevenLabsClient(api_key=os.getenv("ELEVEN_API_KEY"))
 
-    audio = generate(
-        text=text,
-        voice=os.getenv("ELEVEN_VOICE_ID"),
-        model="eleven_multilingual_v2",
-        stability=0.5,
-        similarity_boost=0.7,
-        style=0.0,
-        use_speaker_boost=True
-    )
+voice_settings = VoiceSettings(
+    stability=0.3,
+    similarity_boost=0.7,
+    style=0.0,
+    use_speaker_boost=True
+)
 
-    audio_bytes = bytes(audio)
-    print(f"📏 Lengte audio-output: {len(audio_bytes)} bytes")
-
-    with open(filename, "wb") as f:
-        f.write(audio_bytes)
-
-    print(f"✅ Audio opgeslagen als: {filename}")
-    return audio_bytes
+def text_to_speech(text, voice="Rachel"):
+    try:
+        audio = client.tts.generate(
+            text=text,
+            voice=voice,
+            model="eleven_multilingual_v2",
+            voice_settings=voice_settings
+        )
+        return audio
+    except Exception as e:
+        print(f"❌ Fout in text_to_speech: {e}")
+        return None

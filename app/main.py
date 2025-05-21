@@ -1,51 +1,28 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, FileResponse
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import os
-import traceback
-
-from app.bot_logic import generate_bot_reply
+from fastapi.responses import FileResponse, JSONResponse
 from app.tts import text_to_speech
 
 app = FastAPI()
-
-# Sta frontend requests toe vanuit de browser
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Mount de frontend map
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
-async def root():
+def serve_index():
     return FileResponse("static/index.html")
 
 @app.post("/ask")
 async def ask(request: Request):
-    try:
-        data = await request.json()
-        user_input = data.get("question")
+    data = await request.json()
+    user_input = data.get("question")
+    if not user_input:
+        return JSONResponse(content={"error": "Lege input"}, status_code=400)
 
-        if not user_input or not isinstance(user_input, str):
-            print("⚠️ Ongeldige of lege invoer ontvangen.")
-            return JSONResponse(status_code=400, content={"error": "Ongeldige invoer"})
+    # (simpele dummy reply)
+    reply = f"Hallo! Je zei: {user_input}"
 
-        print(f"📥 Ontvangen user_input: '{user_input}'")
-        reply = generate_bot_reply(user_input)
-        print(f"🧠 GPT antwoord: '{reply}'")
+    audio = text_to_speech(reply)
+    if not audio:
+        return JSONResponse(content={"error": "TTS mislukt"}, status_code=500)
 
-        print("🎙️ Start TTS generatie...")
-        audio_url = text_to_speech(reply)
-
-        return {"answer": reply, "audio_url": audio_url}
-
-    except Exception as e:
-        print(f"❌ Fout in POST /ask: {e}")
-        traceback.print_exc()
-        return JSONResponse(status_code=500, content={"error": str(e)})
+    # Return dummy mp3 link of binaire data
+    return JSONResponse(content={"reply": reply})
