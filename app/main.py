@@ -1,4 +1,3 @@
-from elevenlabs import ElevenLabs, VoiceSettings
 import os
 import tempfile
 import cloudinary
