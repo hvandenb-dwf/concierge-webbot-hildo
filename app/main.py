@@ -1,32 +1,51 @@
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import os
-import tempfile
-import cloudinary
-import cloudinary.uploader
+import traceback
 
-client = ElevenLabs(
-    api_key=os.getenv("ELEVEN_API_KEY")
+from app.bot_logic import generate_bot_reply
+from app.tts import text_to_speech
+
+app = FastAPI()
+
+# Sta frontend requests toe vanuit de browser
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-voice_id = os.getenv("ELEVEN_VOICE_ID")
+# Mount de frontend map
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-def text_to_speech(text: str):
-    audio = client.generate(
-        text=text,
-        voice=voice_id,
-        model="eleven_multilingual_v2",
-        voice_settings=VoiceSettings(
-            stability=0.3,
-            similarity_boost=0.7,
-            style=0.0,
-            use_speaker_boost=True
-        )
-    )
+@app.get("/")
+async def root():
+    return FileResponse("static/index.html")
 
-    # Opslaan naar tijdelijk bestand
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
-        f.write(audio)
-        temp_audio_path = f.name
+@app.post("/ask")
+async def ask(request: Request):
+    try:
+        data = await request.json()
+        user_input = data.get("question")
 
-    # Upload naar Cloudinary
-    result = cloudinary.uploader.upload(temp_audio_path, resource_type="video")
-    return result["secure_url"]
+        if not user_input or not isinstance(user_input, str):
+            print("⚠️ Ongeldige of lege invoer ontvangen.")
+            return JSONResponse(status_code=400, content={"error": "Ongeldige invoer"})
+
+        print(f"📥 Ontvangen user_input: '{user_input}'")
+        reply = generate_bot_reply(user_input)
+        print(f"🧠 GPT antwoord: '{reply}'")
+
+        print("🎙️ Start TTS generatie...")
+        audio_url = text_to_speech(reply)
+
+        return {"answer": reply, "audio_url": audio_url}
+
+    except Exception as e:
+        print(f"❌ Fout in POST /ask: {e}")
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"error": str(e)})
