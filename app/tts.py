@@ -1,5 +1,6 @@
 from elevenlabs.client import ElevenLabs
 from elevenlabs import Voice, VoiceSettings
+from app.cloudinary_util import upload_audio_to_cloudinary
 
 from app.cloudinary_util import upload_to_cloudinary
 import os
