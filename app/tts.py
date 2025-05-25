@@ -1,12 +1,8 @@
 from elevenlabs.client import ElevenLabs
 from elevenlabs import Voice, VoiceSettings
 from app.cloudinary_util import upload_audio_to_cloudinary
-
-from app.cloudinary_util import upload_to_cloudinary
 import os
 import tempfile
-import uuid
-
 
 def text_to_speech(text):
     try:
@@ -24,7 +20,7 @@ def text_to_speech(text):
                 f.write(chunk)
             temp_file_path = f.name
 
-        cloudinary_url = upload_to_cloudinary(temp_file_path)
+        cloudinary_url = upload_audio_to_cloudinary(temp_file_path)
         os.remove(temp_file_path)
 
         return cloudinary_url
