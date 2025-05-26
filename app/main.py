@@ -3,11 +3,11 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 import chardet
-import openai
 import os
 from uuid import uuid4
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
+from openai import OpenAI
 
 app = FastAPI()
 
@@ -19,7 +19,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 memory_store = {}  # {session_id: [memory lines]}
 
@@ -66,7 +66,7 @@ async def upload_url(request: Request):
     prompt = f"Vat de kern samen van deze website en leg uit wat dit bedrijf doet en in welke markt het actief is:\n\n{combined}"
 
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "Je bent een zakelijke analist."},
@@ -89,13 +89,13 @@ async def ask(request: Request):
     audio_data = await file.read()
 
     try:
-        whisper_response = openai.Audio.transcribe(
+        transcription = client.audio.transcriptions.create(
             model="whisper-1",
             file=audio_data,
             response_format="text",
             language="nl"
         )
-        transcript = whisper_response.strip()
+        transcript = transcription.strip()
     except Exception as e:
         return JSONResponse({"error": f"Whisper fout: {str(e)}"}, status_code=500)
 
@@ -105,7 +105,7 @@ async def ask(request: Request):
     ] + [{"role": "user", "content": h} for h in history] + [{"role": "user", "content": transcript}]
 
     try:
-        gpt_response = openai.ChatCompletion.create(
+        gpt_response = client.chat.completions.create(
             model="gpt-4",
             messages=messages
         )
