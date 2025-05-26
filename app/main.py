@@ -91,7 +91,7 @@ async def ask(request: Request):
     try:
         transcription = client.audio.transcriptions.create(
             model="whisper-1",
-            file=audio_data,
+            file=io.BytesIO(audio_data),
             response_format="text",
             language="nl"
         )
