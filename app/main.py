@@ -52,7 +52,7 @@ async def ask(file: UploadFile = File(...)):
                 voice_id="YUdpWWny7k5yb4QCeweX",
                 settings=VoiceSettings(stability=0.3, similarity_boost=0.8)
             ),
-            model="eleven_monolingual_v2",
+            model="eleven_multilingual_v2",
             output_format="mp3"
         )
 
