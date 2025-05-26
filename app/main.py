@@ -45,7 +45,11 @@ def extract_internal_links(base_url: str, html: str, max_links: int = 5) -> list
 
 @app.post("/upload_url")
 async def upload_url(request: Request):
+    try:
     data = await request.json()
+    except Exception:
+    return JSONResponse({"error": "Ongeldige JSON in verzoek"}, status_code=400)
+
     url = data.get("url")
     session_id = data.get("session_id") or str(uuid4())
 
