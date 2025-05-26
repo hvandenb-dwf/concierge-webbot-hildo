@@ -47,7 +47,8 @@ def extract_internal_links(base_url: str, html: str, max_links: int = 5) -> list
 async def upload_url(request: Request):
     try:
         data = await request.json()
-    except Exception:
+    except Exception as e:
+        print("❌ JSON fout:", e)
         return JSONResponse({"error": "Ongeldige JSON in verzoek"}, status_code=400)
 
     url = data.get("url")
@@ -58,6 +59,7 @@ async def upload_url(request: Request):
         internal_links = extract_internal_links(url, html)
         pages = [html] + [fetch_html(link) for link in internal_links]
     except Exception as e:
+        print("❌ Scrape fout:", e)
         return JSONResponse({"error": f"Scrape fout: {str(e)}"}, status_code=500)
 
     combined = "\n\n".join(p[:5000] for p in pages[:5])
@@ -73,6 +75,7 @@ async def upload_url(request: Request):
         )
         summary = response.choices[0].message.content.strip()
     except Exception as e:
+        print("❌ GPT fout:", e)
         return JSONResponse({"error": f"GPT fout: {str(e)}"}, status_code=500)
 
     memory_store.setdefault(session_id, []).append(summary)
