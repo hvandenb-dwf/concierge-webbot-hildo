@@ -6,7 +6,7 @@ import os
 import traceback
 
 from app.bot_logic import generate_bot_reply
-from app.tts import text_to_speech
+from app.tts import text_to_speech, speech_to_speech
 
 app = FastAPI()
 
@@ -40,8 +40,14 @@ async def ask(request: Request):
         reply = generate_bot_reply(user_input)
         print(f"🧠 GPT antwoord: '{reply}'")
 
-        print("🎙️ Start TTS generatie...")
-        audio_url = text_to_speech(reply)
+        bot_mode = int(os.getenv("BOT_MODE", 2))
+
+        if bot_mode == 3:
+            print("🎙️ STS (speech_to_speech) actief")
+            audio_url = speech_to_speech(reply)
+        else:
+            print("🗣️ TTS (text_to_speech) actief")
+            audio_url = text_to_speech(reply)
 
         return {"answer": reply, "audio_url": audio_url}
 
