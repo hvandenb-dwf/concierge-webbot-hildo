@@ -1,158 +1,138 @@
-from fastapi import FastAPI, UploadFile, File, Form, Request
+from fastapi import FastAPI, UploadFile, Form, Request
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware  # ✅ NIEUW
-
-from openai import OpenAI
-from elevenlabs.client import ElevenLabs
-from elevenlabs import Voice, VoiceSettings
-
-import os
-import tempfile
-import uuid
+from fastapi.middleware.cors import CORSMiddleware
 import requests
+import chardet
+import openai
+import os
+from uuid import uuid4
+from urllib.parse import urljoin
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
 
 app = FastAPI()
 
-# ✅ Voeg CORS toe zodat frontend vanaf localhost of Render mag verbinden
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # of specificeer exacte URL als je het wil beperken
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-tts = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
-app.mount("/static", StaticFiles(directory="/tmp"), name="static")
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-SESSION_MEMORY = {}
+memory_store = {}  # {session_id: [memory lines]}
 
-@app.post("/ask")
-async def ask(file: UploadFile = File(...), session_id: str = Form(...)):
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
-            contents = await file.read()
-            tmp.write(contents)
-            tmp_path = tmp.name
+def fetch_html(url: str) -> str:
+    response = requests.get(url, timeout=10)
+    raw = response.content
+    encoding = chardet.detect(raw)['encoding'] or 'utf-8'
+    html = raw.decode(encoding, errors='replace')
+    return html
 
-        transcript = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=open(tmp_path, "rb"),
-            response_format="text",
-            language="nl"
-        )
-
-        if session_id not in SESSION_MEMORY:
-            SESSION_MEMORY[session_id] = [
-                {"role": "system", "content": "Je bent een behulpzame Nederlandse assistent."}
-            ]
-
-        SESSION_MEMORY[session_id].append({"role": "user", "content": transcript})
-
-        gpt_response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=SESSION_MEMORY[session_id]
-        ).choices[0].message.content
-
-        SESSION_MEMORY[session_id].append({"role": "assistant", "content": gpt_response})
-
-        audio = tts.generate(
-            text=gpt_response,
-            voice=Voice(
-                voice_id="YUdpWWny7k5yb4QCeweX",
-                settings=VoiceSettings(stability=0.3, similarity_boost=0.8)
-            ),
-            model="eleven_multilingual_v2",
-            output_format="mp3_44100_128"
-        )
-
-        filename = f"{uuid.uuid4().hex}.mp3"
-        output_path = f"/tmp/{filename}"
-        with open(output_path, "wb") as f:
-            f.write(b"".join(audio))
-
-        audio_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/static/{filename}"
-        return JSONResponse({"audio_url": audio_url})
-
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+def extract_internal_links(base_url: str, html: str, max_links: int = 5) -> list:
+    soup = BeautifulSoup(html, 'html.parser')
+    links = set()
+    for a in soup.find_all('a', href=True):
+        href = a['href']
+        if href.startswith('/') or base_url in href:
+            full_url = urljoin(base_url, href)
+            if full_url.startswith(base_url):
+                links.add(full_url)
+        if len(links) >= max_links:
+            break
+    return list(links)
 
 @app.post("/upload_url")
 async def upload_url(request: Request):
     data = await request.json()
     url = data.get("url")
-    session_id = data.get("session_id")
-
-    if not url or not session_id:
-        return JSONResponse(status_code=400, content={"error": "url and session_id required"})
+    session_id = data.get("session_id") or str(uuid4())
 
     try:
-        base = urlparse(url).netloc
-        visited = set()
-        pages = []
+        html = fetch_html(url)
+        internal_links = extract_internal_links(url, html)
+        pages = [html] + [fetch_html(link) for link in internal_links]
+    except Exception as e:
+        return JSONResponse({"error": f"Scrape fout: {str(e)}"}, status_code=500)
 
-        def get_clean_text(u):
-            try:
-                html = requests.get(u, timeout=5).text
-                soup = BeautifulSoup(html, "html.parser")
-                return soup.get_text(separator=" ", strip=True)
-            except:
-                return ""
+    combined = "\n\n".join(p[:5000] for p in pages[:5])
+    prompt = f"Vat de kern samen van deze website en leg uit wat dit bedrijf doet en in welke markt het actief is:\n\n{combined}"
 
-        pages.append(get_clean_text(url))
-        visited.add(url)
-
-        soup = BeautifulSoup(requests.get(url, timeout=5).text, "html.parser")
-        links = soup.find_all("a", href=True)
-        count = 0
-
-        for link in links:
-            href = link['href']
-            full_url = urljoin(url, href)
-            if base in full_url and full_url not in visited:
-                visited.add(full_url)
-                text = get_clean_text(full_url)
-                if text:
-                    pages.append(text)
-                    count += 1
-                if count >= 5:
-                    break
-
-        combined = "\n\n".join(p[:3000] for p in pages if p)[:12000]
-
-        prompt = (
-            f"Hieronder vind je de inhoud van een bedrijfswebsite verdeeld over meerdere pagina's:\n\n{combined}\n\n"
-            f"Vat deze informatie samen:\n"
-            f"- Wat doet dit bedrijf precies?\n"
-            f"- In welke markt of sector zijn ze actief?\n"
-            f"- Wat zijn actuele trends in die sector?\n"
-            f"- Noem enkele bekende concurrenten in Nederland of Europa.\n"
-            f"Geef een duidelijke, zakelijke analyse."
-        )
-
-        summary = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
             messages=[
-                {"role": "system", "content": "Je bent een bedrijfsanalist."},
+                {"role": "system", "content": "Je bent een zakelijke analist."},
                 {"role": "user", "content": prompt}
             ]
-        ).choices[0].message.content
-
-        if session_id not in SESSION_MEMORY:
-            SESSION_MEMORY[session_id] = []
-
-        SESSION_MEMORY[session_id].insert(0, {
-            "role": "system",
-            "content": f"Bedrijfsanalyse van {url}:\n{summary}"
-        })
-
-        print(f"✅ [{session_id}] Analyse toegevoegd.")
-        return JSONResponse({"status": "ok"})
-
+        )
+        summary = response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"❌ [{session_id}] URL-fout:", str(e))
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse({"error": f"GPT fout: {str(e)}"}, status_code=500)
+
+    memory_store.setdefault(session_id, []).append(summary)
+    return {"status": "ok", "message": "Analyse toegevoegd.", "session_id": session_id}
+
+@app.post("/ask")
+async def ask(request: Request):
+    form = await request.form()
+    session_id = form.get("session_id") or str(uuid4())
+    file: UploadFile = form["file"]
+    audio_data = await file.read()
+
+    try:
+        whisper_response = openai.Audio.transcribe(
+            model="whisper-1",
+            file=audio_data,
+            response_format="text",
+            language="nl"
+        )
+        transcript = whisper_response.strip()
+    except Exception as e:
+        return JSONResponse({"error": f"Whisper fout: {str(e)}"}, status_code=500)
+
+    history = memory_store.get(session_id, [])
+    messages = [
+        {"role": "system", "content": "Je bent een vriendelijke Nederlandstalige assistent."}
+    ] + [{"role": "user", "content": h} for h in history] + [{"role": "user", "content": transcript}]
+
+    try:
+        gpt_response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=messages
+        )
+        reply = gpt_response.choices[0].message.content.strip()
+    except Exception as e:
+        return JSONResponse({"error": f"GPT fout: {str(e)}"}, status_code=500)
+
+    memory_store.setdefault(session_id, []).append(transcript)
+    memory_store[session_id].append(reply)
+
+    try:
+        from elevenlabs.client import ElevenLabs
+        from elevenlabs import Voice
+
+        eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
+        audio = eleven_client.generate(
+            text=reply,
+            voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),
+            model="eleven_monolingual_v1",
+            output_format="mp3_44100_128"
+        )
+
+        import cloudinary.uploader
+        upload = cloudinary.uploader.upload(
+            audio,
+            resource_type="video",
+            format="mp3",
+            folder="speech",
+            use_filename=True,
+            unique_filename=True,
+            overwrite=True
+        )
+        audio_url = upload["secure_url"]
+    except Exception as e:
+        return JSONResponse({"error": f"Audio fout: {str(e)}"}, status_code=500)
+
+    return {"audio_url": audio_url, "transcript": transcript, "reply": reply, "session_id": session_id}
