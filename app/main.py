@@ -1,57 +1,73 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, FileResponse
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from openai import OpenAI
+from elevenlabs.client import ElevenLabs
+from elevenlabs import Voice, VoiceSettings
 import os
-import traceback
-
-from app.bot_logic import generate_bot_reply
-from app.tts import text_to_speech, speech_to_speech
+import tempfile
+import uuid
 
 app = FastAPI()
 
-# Sta frontend requests toe vanuit de browser
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Init API clients
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+tts = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
 
-# Mount de frontend map
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-@app.get("/")
-async def root():
-    return FileResponse("static/index.html")
+# Maak /static map beschikbaar voor mp3 playback
+app.mount("/static", StaticFiles(directory="/tmp"), name="static")
 
 @app.post("/ask")
-async def ask(request: Request):
+async def ask(file: UploadFile = File(...)):
     try:
-        data = await request.json()
-        user_input = data.get("question")
+        # 🔹 Bewaar audio tijdelijk
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
+            contents = await file.read()
+            tmp.write(contents)
+            tmp_path = tmp.name
 
-        if not user_input or not isinstance(user_input, str):
-            print("⚠️ Ongeldige of lege invoer ontvangen.")
-            return JSONResponse(status_code=400, content={"error": "Ongeldige invoer"})
+        # 🧠 Whisper transcriptie (Nederlands)
+        transcript = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=open(tmp_path, "rb"),
+            response_format="text",
+            language="nl"
+        )
 
-        print(f"📥 Ontvangen user_input: '{user_input}'")
-        reply = generate_bot_reply(user_input)
-        print(f"🧠 GPT antwoord: '{reply}'")
+        print("📝 Transcript:", transcript)
 
-        bot_mode = int(os.getenv("BOT_MODE", 2))
+        # 💬 GPT-antwoord
+        gpt_reply = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "Je bent een behulpzame Nederlandse assistent."},
+                {"role": "user", "content": transcript}
+            ]
+        ).choices[0].message.content
 
-        if bot_mode == 3:
-            print("🎙️ STS (speech_to_speech) actief")
-            audio_url = speech_to_speech(reply)
-        else:
-            print("🗣️ TTS (text_to_speech) actief")
-            audio_url = text_to_speech(reply)
+        print("🤖 GPT:", gpt_reply)
 
-        return {"answer": reply, "audio_url": audio_url}
+        # 🔊 TTS met Ruth
+        audio = tts.generate(
+            text=gpt_reply,
+            voice=Voice(
+                voice_id="YUdpWWny7k5yb4QCeweX",  # Ruth
+                settings=VoiceSettings(stability=0.3, similarity_boost=0.8)
+            ),
+            model="eleven_monolingual_v1",
+            output_format="mp3"
+        )
+
+        # 📁 Opslaan als MP3
+        filename = f"{uuid.uuid4().hex}.mp3"
+        output_path = f"/tmp/{filename}"
+        with open(output_path, "wb") as f:
+            f.write(audio)
+
+        # 🌐 Teruggeven van URL
+        audio_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/static/{filename}"
+        return JSONResponse({"audio_url": audio_url})
 
     except Exception as e:
-        print(f"❌ Fout in POST /ask: {e}")
-        traceback.print_exc()
+        print("❌ Fout in /ask:", str(e))
         return JSONResponse(status_code=500, content={"error": str(e)})
