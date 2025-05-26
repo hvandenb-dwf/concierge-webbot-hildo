@@ -10,33 +10,32 @@ import uuid
 
 app = FastAPI()
 
-# Init API clients
+# API clients
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 tts = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
 
-# Maak /static map beschikbaar voor mp3 playback
+# Maak /tmp beschikbaar als /static
 app.mount("/static", StaticFiles(directory="/tmp"), name="static")
 
 @app.post("/ask")
 async def ask(file: UploadFile = File(...)):
     try:
-        # 🔹 Bewaar audio tijdelijk
+        # 🔹 Bewaar de audio tijdelijk
         with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
             contents = await file.read()
             tmp.write(contents)
             tmp_path = tmp.name
 
-        # 🧠 Whisper transcriptie (Nederlands)
+        # 🧠 Whisper transcriptie
         transcript = client.audio.transcriptions.create(
             model="whisper-1",
             file=open(tmp_path, "rb"),
             response_format="text",
             language="nl"
         )
-
         print("📝 Transcript:", transcript)
 
-        # 💬 GPT-antwoord
+        # 💬 GPT antwoord
         gpt_reply = client.chat.completions.create(
             model="gpt-4",
             messages=[
@@ -44,27 +43,26 @@ async def ask(file: UploadFile = File(...)):
                 {"role": "user", "content": transcript}
             ]
         ).choices[0].message.content
-
         print("🤖 GPT:", gpt_reply)
 
-        # 🔊 TTS met Ruth
+        # 🗣️ ElevenLabs TTS met Ruth
         audio = tts.generate(
             text=gpt_reply,
             voice=Voice(
-                voice_id="YUdpWWny7k5yb4QCeweX",  # Ruth
+                voice_id="YUdpWWny7k5yb4QCeweX",
                 settings=VoiceSettings(stability=0.3, similarity_boost=0.8)
             ),
             model="eleven_monolingual_v1",
             output_format="mp3"
         )
 
-        # 📁 Opslaan als MP3
+        # 💾 Opslaan als MP3
         filename = f"{uuid.uuid4().hex}.mp3"
         output_path = f"/tmp/{filename}"
         with open(output_path, "wb") as f:
-            f.write(audio)
+            f.write(b"".join(audio))  # ✅ Fix: combineer generator naar bytes
 
-        # 🌐 Teruggeven van URL
+        # 🌐 Publiceer als URL
         audio_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/static/{filename}"
         return JSONResponse({"audio_url": audio_url})
 
