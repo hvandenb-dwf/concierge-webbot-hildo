@@ -1,9 +1,12 @@
 from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware  # ✅ NIEUW
+
 from openai import OpenAI
 from elevenlabs.client import ElevenLabs
 from elevenlabs import Voice, VoiceSettings
+
 import os
 import tempfile
 import uuid
@@ -12,6 +15,15 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 
 app = FastAPI()
+
+# ✅ Voeg CORS toe zodat frontend vanaf localhost of Render mag verbinden
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # of specificeer exacte URL als je het wil beperken
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 tts = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
@@ -91,11 +103,9 @@ async def upload_url(request: Request):
             except:
                 return ""
 
-        # 📥 1. Voeg homepage toe
         pages.append(get_clean_text(url))
         visited.add(url)
 
-        # 🔗 2. Zoek interne links op homepage
         soup = BeautifulSoup(requests.get(url, timeout=5).text, "html.parser")
         links = soup.find_all("a", href=True)
         count = 0
