@@ -1,30 +1,36 @@
+# app/tts.py
+
 import os
 import tempfile
 from elevenlabs.client import ElevenLabs
 from elevenlabs import Voice, VoiceSettings
-from app.cloudinary_util import upload_to_cloudinary
+from app.cloudinary_util import upload_audio_to_cloudinary
 
 
 def text_to_speech(text: str) -> str:
     try:
-        # Initialiseer ElevenLabs client
-        client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
-
-        # Definieer voice met settings
+        # Voice configuratie (bijv. Ruth)
         voice = Voice(
-            voice_id=os.getenv("ELEVEN_VOICE_ID"),
+            voice_id=os.getenv("ELEVEN_VOICE_ID"),  # Zorg dat deze in je Render env staat
             settings=VoiceSettings(stability=0.5, similarity_boost=0.8)
         )
 
-        # Genereer spraak en schrijf naar tijdelijk mp3-bestand
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
-            for chunk in client.generate(text=text, voice=voice):
-                f.write(chunk)
-            temp_file_path = f.name
+        # ElevenLabs client
+        client = ElevenLabs(
+            api_key=os.getenv("ELEVEN_API_KEY"),
+        )
 
-        # Upload naar Cloudinary en verwijder tijdelijk bestand
-        audio_url = upload_to_cloudinary(temp_file_path)
-        os.remove(temp_file_path)
+        # Genereer spraak en schrijf naar tijdelijk bestand
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
+            for chunk in client.generate(text=text, voice=voice):
+                temp_file.write(chunk)
+            temp_path = temp_file.name
+
+        # Upload audio naar Cloudinary
+        audio_url = upload_audio_to_cloudinary(temp_path)
+
+        # Verwijder lokaal bestand
+        os.remove(temp_path)
 
         return audio_url
 
