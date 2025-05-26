@@ -5,3 +5,5 @@ cloudinary==1.44.0
 httpx==0.24.1
 elevenlabs==1.0.4
 python-multipart
+beautifulsoup4
+requests
