@@ -53,7 +53,7 @@ async def ask(file: UploadFile = File(...)):
                 settings=VoiceSettings(stability=0.3, similarity_boost=0.8)
             ),
             model="eleven_multilingual_v2",
-            output_format="mp3"
+            output_format="mp3_44100_128"
         )
 
         # 💾 Opslaan als MP3
