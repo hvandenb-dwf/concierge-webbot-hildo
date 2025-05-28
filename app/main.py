@@ -8,9 +8,10 @@ import os
 from uuid import uuid4
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
-import cloudinary.uploader
+import tempfile
 from elevenlabs.client import ElevenLabs
 from elevenlabs import Voice
+import cloudinary.uploader
 
 app = FastAPI()
 
@@ -25,7 +26,7 @@ app.add_middleware(
 openai.api_key = os.getenv("OPENAI_API_KEY")
 eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
 
-memory_store = {}  # session_id: [conversations]
+memory_store = {}  # {session_id: [memory lines]}
 
 def fetch_html(url: str) -> str:
     response = requests.get(url, timeout=10)
@@ -61,20 +62,19 @@ async def upload_url(request: Request):
         combined = "\n\n".join(p[:5000] for p in pages[:5])
         prompt = f"Vat de kern samen van deze website en leg uit wat dit bedrijf doet en in welke markt het actief is:\n\n{combined}"
 
-        chat_response = openai.chat.completions.create(
+        response = openai.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "Je bent een zakelijke analist."},
                 {"role": "user", "content": prompt}
             ]
         )
-        summary = chat_response.choices[0].message.content.strip()
+        summary = response.choices[0].message.content.strip()
+
         memory_store.setdefault(session_id, []).append(summary)
-
         return {"status": "ok", "message": "Analyse toegevoegd.", "session_id": session_id}
-
     except Exception as e:
-        return JSONResponse({"error": f"Upload fout: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": f"Scrape of GPT fout: {str(e)}"}, status_code=500)
 
 @app.post("/ask")
 async def ask(request: Request):
@@ -84,12 +84,18 @@ async def ask(request: Request):
         file: UploadFile = form["file"]
         audio_bytes = await file.read()
 
-        whisper_response = openai.audio.transcriptions.create(
-            model="whisper-1",
-            file=(file.filename, audio_bytes, file.content_type),
-            response_format="text",
-            language="nl"
-        )
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp:
+            temp.write(audio_bytes)
+            temp.flush()
+            temp_path = temp.name
+
+        with open(temp_path, "rb") as audio_file:
+            whisper_response = openai.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                response_format="text",
+                language="nl"
+            )
         transcript = whisper_response.strip()
 
         history = memory_store.get(session_id, [])
