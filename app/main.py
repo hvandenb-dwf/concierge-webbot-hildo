@@ -8,6 +8,7 @@ import os
 from uuid import uuid4
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
+import tempfile
 
 app = FastAPI()
 
@@ -47,16 +48,19 @@ def extract_internal_links(base_url: str, html: str, max_links: int = 5) -> list
 async def upload_url(request: Request):
     try:
         data = await request.json()
-        print("✅ Upload data ontvangen:", data)
         url = data.get("url")
         session_id = data.get("session_id") or str(uuid4())
 
         html = fetch_html(url)
         internal_links = extract_internal_links(url, html)
         pages = [html] + [fetch_html(link) for link in internal_links]
-        combined = "\n\n".join(p[:5000] for p in pages[:5])
-        prompt = f"Vat de kern samen van deze website en leg uit wat dit bedrijf doet en in welke markt het actief is:\n\n{combined}"
+    except Exception as e:
+        return JSONResponse({"error": f"Scrape fout: {str(e)}"}, status_code=500)
 
+    combined = "\n\n".join(p[:5000] for p in pages[:5])
+    prompt = f"Vat de kern samen van deze website en leg uit wat dit bedrijf doet en in welke markt het actief is:\n\n{combined}"
+
+    try:
         response = openai.chat.completions.create(
             model="gpt-4",
             messages=[
@@ -65,27 +69,31 @@ async def upload_url(request: Request):
             ]
         )
         summary = response.choices[0].message.content.strip()
-        memory_store.setdefault(session_id, []).append(summary)
-        return {"status": "ok", "message": "Analyse toegevoegd.", "session_id": session_id}
     except Exception as e:
-        print("❌ Upload fout:", str(e))
-        return JSONResponse({"error": f"Upload fout: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": f"GPT fout: {str(e)}"}, status_code=500)
+
+    memory_store.setdefault(session_id, []).append(summary)
+    return {"status": "ok", "message": "Analyse toegevoegd.", "session_id": session_id}
 
 @app.post("/ask")
 async def ask(request: Request):
     form = await request.form()
     session_id = form.get("session_id") or str(uuid4())
     file: UploadFile = form["file"]
-    audio_data = await file.read()
 
     try:
-        whisper_response = openai.audio.transcriptions.create(
-            model="whisper-1",
-            file=audio_data,
-            response_format="text",
-            language="nl"
-        )
-        transcript = whisper_response.strip()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
+            tmp.write(await file.read())
+            tmp_path = tmp.name
+
+        with open(tmp_path, "rb") as audio_file:
+            whisper_response = openai.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                response_format="text",
+                language="nl"
+            )
+            transcript = whisper_response.strip()
     except Exception as e:
         return JSONResponse({"error": f"Whisper fout: {str(e)}"}, status_code=500)
 
