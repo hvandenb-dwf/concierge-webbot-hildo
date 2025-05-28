@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import requests
 import chardet
 import os
+import io
 from uuid import uuid4
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
@@ -83,12 +84,17 @@ async def upload_url(request: Request):
 
 @app.post("/ask")
 async def ask(request: Request):
-    form = await request.form()
-    session_id = form.get("session_id") or str(uuid4())
-    file: UploadFile = form["file"]
-    audio_data = await file.read()
-
     try:
+        form = await request.form()
+        print("✅ Formulier ontvangen")
+
+        session_id = form.get("session_id") or str(uuid4())
+        print("🔑 Sessie-ID:", session_id)
+
+        file: UploadFile = form["file"]
+        audio_data = await file.read()
+        print("🎧 Audio ontvangen (bytes):", len(audio_data))
+
         transcription = client.audio.transcriptions.create(
             model="whisper-1",
             file=io.BytesIO(audio_data),
@@ -96,7 +102,9 @@ async def ask(request: Request):
             language="nl"
         )
         transcript = transcription.strip()
+        print("✍️ Transcript:", transcript)
     except Exception as e:
+        print("❌ Whisper fout:", e)
         return JSONResponse({"error": f"Whisper fout: {str(e)}"}, status_code=500)
 
     history = memory_store.get(session_id, [])
@@ -110,7 +118,9 @@ async def ask(request: Request):
             messages=messages
         )
         reply = gpt_response.choices[0].message.content.strip()
+        print("🤖 GPT antwoord:", reply)
     except Exception as e:
+        print("❌ GPT fout:", e)
         return JSONResponse({"error": f"GPT fout: {str(e)}"}, status_code=500)
 
     memory_store.setdefault(session_id, []).append(transcript)
@@ -127,6 +137,7 @@ async def ask(request: Request):
             model="eleven_monolingual_v1",
             output_format="mp3_44100_128"
         )
+        print("🔊 Audio gegenereerd")
 
         import cloudinary.uploader
         upload = cloudinary.uploader.upload(
@@ -139,7 +150,9 @@ async def ask(request: Request):
             overwrite=True
         )
         audio_url = upload["secure_url"]
+        print("☁️ Upload voltooid:", audio_url)
     except Exception as e:
+        print("❌ Audio fout:", e)
         return JSONResponse({"error": f"Audio fout: {str(e)}"}, status_code=500)
 
     return {"audio_url": audio_url, "transcript": transcript, "reply": reply, "session_id": session_id}
