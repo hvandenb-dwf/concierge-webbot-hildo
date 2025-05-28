@@ -9,9 +9,6 @@ from uuid import uuid4
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 import tempfile
-from elevenlabs.client import ElevenLabs
-from elevenlabs import Voice
-import cloudinary.uploader
 
 app = FastAPI()
 
@@ -24,7 +21,6 @@ app.add_middleware(
 )
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
-eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
 
 memory_store = {}  # {session_id: [memory lines]}
 
@@ -62,7 +58,7 @@ async def upload_url(request: Request):
         combined = "\n\n".join(p[:5000] for p in pages[:5])
         prompt = f"Vat de kern samen van deze website en leg uit wat dit bedrijf doet en in welke markt het actief is:\n\n{combined}"
 
-        response = openai.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "Je bent een zakelijke analist."},
@@ -73,45 +69,61 @@ async def upload_url(request: Request):
 
         memory_store.setdefault(session_id, []).append(summary)
         return {"status": "ok", "message": "Analyse toegevoegd.", "session_id": session_id}
+
     except Exception as e:
-        return JSONResponse({"error": f"Scrape of GPT fout: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": f"Scrape/GPT fout: {str(e)}"}, status_code=500)
 
 @app.post("/ask")
 async def ask(request: Request):
+    form = await request.form()
+    session_id = form.get("session_id") or str(uuid4())
+    file: UploadFile = form["file"]
+    audio_data = await file.read()
+
     try:
-        form = await request.form()
-        session_id = form.get("session_id") or str(uuid4())
-        file: UploadFile = form["file"]
-        audio_bytes = await file.read()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_audio:
+            temp_audio.write(audio_data)
+            temp_audio_path = temp_audio.name
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp:
-            temp.write(audio_bytes)
-            temp.flush()
-            temp_path = temp.name
+        print(f"[DEBUG] Audio opgeslagen: {temp_audio_path}, bytes: {len(audio_data)}")
 
-        with open(temp_path, "rb") as audio_file:
-            whisper_response = openai.audio.transcriptions.create(
+        with open(temp_audio_path, "rb") as f:
+            whisper_response = openai.Audio.transcribe(
                 model="whisper-1",
-                file=audio_file,
+                file=f,
                 response_format="text",
                 language="nl"
             )
         transcript = whisper_response.strip()
 
-        history = memory_store.get(session_id, [])
-        messages = [
-            {"role": "system", "content": "Je bent een vriendelijke Nederlandstalige assistent."}
-        ] + [{"role": "user", "content": h} for h in history] + [{"role": "user", "content": transcript}]
+    except Exception as e:
+        return JSONResponse({"error": f"Whisper fout: {str(e)}"}, status_code=500)
 
-        chat_response = openai.chat.completions.create(
+    history = memory_store.get(session_id, [])
+    messages = (
+        [{"role": "system", "content": "Je bent een vriendelijke Nederlandstalige assistent."}]
+        + [{"role": "user", "content": h} for h in history]
+        + [{"role": "user", "content": transcript}]
+    )
+
+    try:
+        gpt_response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=messages
         )
-        reply = chat_response.choices[0].message.content.strip()
+        reply = gpt_response.choices[0].message.content.strip()
+    except Exception as e:
+        return JSONResponse({"error": f"GPT fout: {str(e)}"}, status_code=500)
 
-        memory_store.setdefault(session_id, []).append(transcript)
-        memory_store[session_id].append(reply)
+    memory_store.setdefault(session_id, []).append(transcript)
+    memory_store[session_id].append(reply)
 
+    try:
+        from elevenlabs.client import ElevenLabs
+        from elevenlabs import Voice
+        import cloudinary.uploader
+
+        eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
         audio = eleven_client.generate(
             text=reply,
             voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),
@@ -129,8 +141,7 @@ async def ask(request: Request):
             overwrite=True
         )
         audio_url = upload["secure_url"]
-
-        return {"audio_url": audio_url, "transcript": transcript, "reply": reply, "session_id": session_id}
-
     except Exception as e:
-        return JSONResponse({"error": f"Ask fout: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": f"Audio fout: {str(e)}"}, status_code=500)
+
+    return {"audio_url": audio_url, "transcript": transcript, "reply": reply, "session_id": session_id}
