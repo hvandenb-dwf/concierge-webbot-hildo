@@ -9,6 +9,7 @@ from uuid import uuid4
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 from openai import OpenAI
+from openai._base_client import TypedFile
 
 app = FastAPI()
 
@@ -95,9 +96,15 @@ async def ask(request: Request):
         audio_data = await file.read()
         print("🎧 Audio ontvangen (bytes):", len(audio_data))
 
+        typed_file = TypedFile.from_data(
+            data=audio_data,
+            filename="input.webm",
+            content_type="audio/webm"
+        )
+
         transcription = client.audio.transcriptions.create(
             model="whisper-1",
-            file=io.BytesIO(audio_data),
+            file=typed_file,
             response_format="text",
             language="nl"
         )
