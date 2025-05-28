@@ -9,7 +9,7 @@ from uuid import uuid4
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 from openai import OpenAI
-from openai._base_client import TypedFile
+from openai.types import File as TypedFile
 
 app = FastAPI()
 
