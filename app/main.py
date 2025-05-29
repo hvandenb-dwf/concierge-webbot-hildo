@@ -129,15 +129,17 @@ async def ask(request: Request):
 
     try:
         eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
-        audio = eleven_client.generate(
+        audio_stream = eleven_client.generate(
             text=reply,
             voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),
             model="eleven_monolingual_v1",
             output_format="mp3_44100_128"
         )
 
+        audio_bytes = b"".join(audio_stream)  # generator naar bytes
+
         upload = cloudinary.uploader.upload(
-            audio,
+            io.BytesIO(audio_bytes),
             resource_type="video",
             format="mp3",
             folder="speech",
