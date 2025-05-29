@@ -127,31 +127,30 @@ async def ask(request: Request):
     memory_store.setdefault(session_id, []).append(transcript)
     memory_store[session_id].append(reply)
 
-   try:
-    eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
-    audio_stream = eleven_client.generate(
-        text=reply,
-        voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),  # Ruth
-        model="eleven_monolingual_v1",
-        output_format="mp3_44100_128"
-    )
+    try:
+        eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
+        audio_stream = eleven_client.generate(
+            text=reply,
+            voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),  # Ruth
+            model="eleven_monolingual_v1",
+            output_format="mp3_44100_128"
+        )
 
-    audio_bytes = b"".join(audio_stream)  # generator naar bytes
+        audio_bytes = b"".join(audio_stream)
 
-    upload = cloudinary.uploader.upload(
-        io.BytesIO(audio_bytes),
-        resource_type="video",
-        format="mp3",
-        folder="speech",
-        use_filename=True,
-        unique_filename=True,
-        overwrite=True
-    )
-    audio_url = upload["secure_url"]
-except Exception as e:
-    traceback.print_exc()
-    return JSONResponse({"error": f"Audio fout: {str(e)}"}, status_code=500)
-
+        upload = cloudinary.uploader.upload(
+            io.BytesIO(audio_bytes),
+            resource_type="video",
+            format="mp3",
+            folder="speech",
+            use_filename=True,
+            unique_filename=True,
+            overwrite=True
+        )
+        audio_url = upload["secure_url"]
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse({"error": f"Audio fout: {str(e)}"}, status_code=500)
 
     return {
         "audio_url": audio_url,
