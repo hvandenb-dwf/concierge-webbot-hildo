@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, Form, Request
+ffrom fastapi import FastAPI, UploadFile, Form, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import requests
@@ -132,7 +132,7 @@ async def ask(request: Request):
         audio_stream = eleven_client.generate(
             text="Hallo, ik ben Amanda. Waarmee kan ik je vandaag helpen?",
             voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),  # Ruth
-            model="eleven_monolingual_v1",
+            model="eleven_multilingual_v2",
             output_format="mp3_44100_128"
         )
 
@@ -158,3 +158,4 @@ async def ask(request: Request):
         "reply": reply,
         "session_id": session_id
     }
+
