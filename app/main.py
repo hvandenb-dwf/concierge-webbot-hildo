@@ -8,6 +8,10 @@ import os
 from uuid import uuid4
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
+import io
+import cloudinary.uploader
+from elevenlabs.client import ElevenLabs
+from elevenlabs import Voice
 
 app = FastAPI()
 
@@ -86,12 +90,14 @@ async def ask(request: Request):
         if not file:
             return JSONResponse({"error": "Geen audiobestand ontvangen."}, status_code=400)
 
-        audio_data = await file.read()
-        print("🎧 Bestand ontvangen:", file.filename, "-", len(audio_data), "bytes")
+        audio_bytes = await file.read()
+        audio_file = io.BytesIO(audio_bytes)
+        audio_file.name = file.filename
+        print("🎧 Bestand ontvangen:", file.filename, "-", len(audio_bytes), "bytes")
 
         whisper_response = openai.audio.transcriptions.create(
             model="whisper-1",
-            file=audio_data,
+            file=audio_file,
             response_format="text",
             language="nl"
         )
@@ -117,9 +123,6 @@ async def ask(request: Request):
     memory_store[session_id].append(reply)
 
     try:
-        from elevenlabs.client import ElevenLabs
-        from elevenlabs import Voice
-
         eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
         audio = eleven_client.generate(
             text=reply,
@@ -128,7 +131,6 @@ async def ask(request: Request):
             output_format="mp3_44100_128"
         )
 
-        import cloudinary.uploader
         upload = cloudinary.uploader.upload(
             audio,
             resource_type="video",
