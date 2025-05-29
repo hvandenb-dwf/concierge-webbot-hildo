@@ -130,7 +130,7 @@ async def ask(request: Request):
     try:
         eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
         audio_stream = eleven_client.generate(
-            text=reply,
+            text="Hallo, ik ben Amanda. Waarmee kan ik je vandaag helpen?",
             voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),  # Ruth
             model="eleven_monolingual_v1",
             output_format="mp3_44100_128"
