@@ -12,6 +12,7 @@ import io
 import cloudinary.uploader
 from elevenlabs.client import ElevenLabs
 from elevenlabs import Voice
+import traceback
 
 app = FastAPI()
 
@@ -60,6 +61,7 @@ async def upload_url(request: Request):
         internal_links = extract_internal_links(url, html)
         pages = [html] + [fetch_html(link) for link in internal_links]
     except Exception as e:
+        traceback.print_exc()
         return JSONResponse({"error": f"Scrape fout: {str(e)}"}, status_code=500)
 
     combined = "\n\n".join(p[:5000] for p in pages[:5])
@@ -75,6 +77,7 @@ async def upload_url(request: Request):
         )
         summary = response.choices[0].message.content.strip()
     except Exception as e:
+        traceback.print_exc()
         return JSONResponse({"error": f"GPT fout: {str(e)}"}, status_code=500)
 
     memory_store.setdefault(session_id, []).append(summary)
@@ -103,6 +106,7 @@ async def ask(request: Request):
         )
         transcript = whisper_response.strip()
     except Exception as e:
+        traceback.print_exc()
         return JSONResponse({"error": f"Whisper fout: {str(e)}"}, status_code=500)
 
     history = memory_store.get(session_id, [])
@@ -117,6 +121,7 @@ async def ask(request: Request):
         )
         reply = gpt_response.choices[0].message.content.strip()
     except Exception as e:
+        traceback.print_exc()
         return JSONResponse({"error": f"GPT fout: {str(e)}"}, status_code=500)
 
     memory_store.setdefault(session_id, []).append(transcript)
@@ -142,6 +147,7 @@ async def ask(request: Request):
         )
         audio_url = upload["secure_url"]
     except Exception as e:
+        traceback.print_exc()
         return JSONResponse({"error": f"Audio fout: {str(e)}"}, status_code=500)
 
     return {
