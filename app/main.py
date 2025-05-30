@@ -1,4 +1,4 @@
-ffrom fastapi import FastAPI, UploadFile, Form, Request
+from fastapi import FastAPI, UploadFile, Form, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import requests
@@ -158,4 +158,3 @@ async def ask(request: Request):
         "reply": reply,
         "session_id": session_id
     }
-
