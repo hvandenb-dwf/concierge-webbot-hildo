@@ -71,47 +71,7 @@ async def upload_url(request: Request):
         response = openai.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "Je bent een zakelijke analist."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        summary = response.choices[0].message.content.strip()
-    except Exception as e:
-        traceback.print_exc()
-        return JSONResponse({"error": f"GPT fout: {str(e)}"}, status_code=500)
-
-    memory_store.setdefault(session_id, []).append(summary)
-    return {"status": "ok", "message": "Analyse toegevoegd.", "session_id": session_id}
-
-@app.post("/ask")
-async def ask(request: Request):
-    try:
-        form = await request.form()
-        session_id = form.get("session_id") or str(uuid4())
-        file: UploadFile = form.get("file")
-
-        if not file:
-            return JSONResponse({"error": "Geen audiobestand ontvangen."}, status_code=400)
-
-        audio_bytes = await file.read()
-        audio_file = io.BytesIO(audio_bytes)
-        audio_file.name = file.filename
-        print("🎧 Bestand ontvangen:", file.filename, "-", len(audio_bytes), "bytes")
-
-        whisper_response = openai.audio.transcriptions.create(
-            model="whisper-1",
-            file=audio_file,
-            response_format="text",
-            language="nl"
-        )
-        transcript = whisper_response.strip()
-    except Exception as e:
-        traceback.print_exc()
-        return JSONResponse({"error": f"Whisper fout: {str(e)}"}, status_code=500)
-
-    history = memory_store.get(session_id, [])
-    messages = [
-        {"role": "system", "content": "Je bent een vriendelijke Nederlandstalige assistent."}
+                {"role": "system", "content": "Je bent Eva, een vriendelijke Nederlandstalige assistent."}
     ] + [{"role": "user", "content": h} for h in history] + [{"role": "user", "content": transcript}]
 
     try:
@@ -120,6 +80,17 @@ async def ask(request: Request):
             messages=messages
         )
         reply = gpt_response.choices[0].message.content.strip()
+
+        # Maak reply natuurlijker voor spraak
+        reply = reply.replace('“', '"').replace('”', '"')
+        reply = reply.replace('’', "'").replace('‘', "'")
+        reply = reply.replace('...', '.').replace('..', '.')
+        reply = reply.replace('
+', ' ')
+
+        # Voeg optioneel een menselijke opener toe
+        if not reply.lower().startswith(('ja', 'nee', 'natuurlijk', 'zeker', 'goed')):
+            reply = "Natuurlijk. " + reply
     except Exception as e:
         traceback.print_exc()
         return JSONResponse({"error": f"GPT fout: {str(e)}"}, status_code=500)
@@ -130,7 +101,7 @@ async def ask(request: Request):
     try:
         eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
         audio_stream = eleven_client.generate(
-            text="Hallo, ik ben Amanda. Waarmee kan ik je vandaag helpen?",
+            text=reply,
             voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),  # Ruth
             model="eleven_multilingual_v2",
             output_format="mp3_44100_128"
