@@ -89,6 +89,9 @@ async def upload_url(request: Request):
         traceback.print_exc()
         return JSONResponse({"error": f"GPT fout: {str(e)}"}, status_code=500)
 
+    memory_store.setdefault(session_id, []).append(prompt)
+    memory_store[session_id].append(reply)
+
     try:
         eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
         audio_stream = eleven_client.generate(
@@ -116,6 +119,7 @@ async def upload_url(request: Request):
 
     return {
         "audio_url": audio_url,
+        "transcript": prompt,
         "reply": reply,
         "session_id": session_id
     }
