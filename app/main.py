@@ -76,31 +76,19 @@ async def upload_url(request: Request):
             ]
         )
         reply = response.choices[0].message.content.strip()
-
-        reply = reply.replace('“', '"').replace('”', '"').replace('…', '...').strip()
-        reply = " ".join(reply.splitlines())
-
-        if not reply.lower().startswith(('ja', 'nee', 'natuurlijk', 'zeker', 'goed')):
-            reply = "Natuurlijk. " + reply
-
     except Exception as e:
         traceback.print_exc()
         return JSONResponse({"error": f"GPT fout: {str(e)}"}, status_code=500)
-
-    memory_store.setdefault(session_id, []).append(prompt)
-    memory_store[session_id].append(reply)
 
     try:
         eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
         audio_stream = eleven_client.generate(
             text=reply,
-            voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),  # Eva (voorheen Ruth)
+            voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),  # Eva
             model="eleven_multilingual_v2",
             output_format="mp3_44100_128"
         )
-
         audio_bytes = b"".join(audio_stream)
-
         upload = cloudinary.uploader.upload(
             io.BytesIO(audio_bytes),
             resource_type="video",
@@ -117,7 +105,87 @@ async def upload_url(request: Request):
 
     return {
         "audio_url": audio_url,
-        "transcript": prompt,
+        "reply": reply,
+        "session_id": session_id
+    }
+
+@app.post("/ask")
+async def ask(file: UploadFile = Form(...), session_id: str = Form(None)):
+    try:
+        contents = await file.read()
+        audio_path = f"/tmp/{uuid4()}.webm"
+        with open(audio_path, "wb") as f:
+            f.write(contents)
+
+        print("🎧 Bestand ontvangen:", file.filename, "-", len(contents), "bytes")
+
+        with open(audio_path, "rb") as f:
+            transcript_response = openai.audio.transcriptions.create(
+                model="whisper-1",
+                file=f,
+                response_format="text",
+                language="nl"
+            )
+        transcript = transcript_response.strip()
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse({"error": f"Whisper fout: {str(e)}"}, status_code=500)
+
+    history = memory_store.get(session_id, [])
+    messages = [
+        {"role": "system", "content": "Je bent Eva, een vriendelijke Nederlandstalige assistent."},
+    ] + [{"role": "user", "content": line} for line in history[-4:]] + [
+        {"role": "user", "content": transcript}
+    ]
+
+    try:
+        gpt_response = openai.chat.completions.create(
+            model="gpt-4",
+            messages=messages
+        )
+        reply = gpt_response.choices[0].message.content.strip()
+
+        # Maak reply natuurlijker voor spraak
+        reply = reply.replace('“', '"').replace('”', '"')
+        reply = reply.replace('’', "'").replace('‘', "'")
+        reply = reply.replace('...', '.').replace('..', '.')
+        reply = reply.replace('\n', ' ')
+
+        if not reply.lower().startswith(('ja', 'nee', 'natuurlijk', 'zeker', 'goed')):
+            reply = "Natuurlijk. " + reply
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse({"error": f"GPT fout: {str(e)}"}, status_code=500)
+
+    memory_store.setdefault(session_id, []).append(transcript)
+    memory_store[session_id].append(reply)
+
+    try:
+        eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
+        audio_stream = eleven_client.generate(
+            text=reply,
+            voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),  # Eva
+            model="eleven_multilingual_v2",
+            output_format="mp3_44100_128"
+        )
+        audio_bytes = b"".join(audio_stream)
+        upload = cloudinary.uploader.upload(
+            io.BytesIO(audio_bytes),
+            resource_type="video",
+            format="mp3",
+            folder="speech",
+            use_filename=True,
+            unique_filename=True,
+            overwrite=True
+        )
+        audio_url = upload["secure_url"]
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse({"error": f"Audio fout: {str(e)}"}, status_code=500)
+
+    return {
+        "audio_url": audio_url,
+        "transcript": transcript,
         "reply": reply,
         "session_id": session_id
     }
