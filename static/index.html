@@ -1,0 +1,46 @@
+<!-- C:\webbot\static\index.html -->
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>Conciërge</title>
+</head>
+<body>
+  <h1>Conciërge</h1>
+  <input id="userInput" type="text" placeholder="Typ je vraag..." />
+  <button onclick="sendQuestion()">Verstuur</button>
+  <h3>Antwoord:</h3>
+  <p id="reply"></p>
+  <audio id="audio" controls style="display:none;"></audio>
+
+  <script>
+    async function sendQuestion() {
+      const userInput = document.getElementById('userInput').value.trim();
+      if (!userInput) {
+        alert("Typ eerst een vraag.");
+        return;
+      }
+
+      const response = await fetch('/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: userInput })
+      });
+
+      const data = await response.json();
+      document.getElementById('reply').textContent = data.answer;
+
+      const audio = document.getElementById('audio');
+      audio.src = data.audio_url;
+      audio.style.display = 'block';
+      audio.play();
+    }
+  </script>
+</body>
+
+
+<body>
+  <div id="root"></div>
+</body>
+
+</html>
