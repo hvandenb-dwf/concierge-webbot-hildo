@@ -70,6 +70,7 @@ async def ask(file: UploadFile = File(...), session_id: str = Form(...)):
         return {"audio_url": audio_url}
 
     except Exception as e:
+        print(f"❌ Fout in /ask: {e}")
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.post("/upload_url")
@@ -78,25 +79,25 @@ async def upload_url(request: Request):
         data = await request.json()
         url = data.get("url")
         session_id = data.get("session_id")
+        print(f"🔍 URL ontvangen: {url}, session_id: {session_id}")
 
-        # Antwoord genereren
         response_text = f"Ik heb de website {url} genoteerd. Dank je wel!"
 
-        # ElevenLabs → audio
         audio = text_to_speech.convert(
             text=response_text,
             voice_id="YUdpWWny7k5yb4QCeweX"
         )
 
-        # Upload naar Cloudinary
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as out:
             out.write(audio)
             out_path = out.name
 
         upload_result = cloudinary.uploader.upload(out_path, resource_type="video")
         audio_url = upload_result.get("secure_url")
+        print(f"✅ Cloudinary audio_url: {audio_url}")
 
         return {"audio_url": audio_url}
 
     except Exception as e:
+        print(f"❌ Fout in /upload_url: {e}")
         return JSONResponse(content={"error": str(e)}, status_code=500)
