@@ -1,61 +1,94 @@
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import requests
+import os
+from openai import OpenAI
+from elevenlabs.client import ElevenLabs, TextToSpeech
 import cloudinary
 import cloudinary.uploader
-from elevenlabs.client import ElevenLabs
-from elevenlabs import Voice
-from elevenlabs import TextToSpeech
-import os
+import uuid
+import tempfile
+import requests
 
 app = FastAPI()
 
+# CORS config
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Voor productie: beperk dit tot je frontend domein
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Setup Cloudinary
+# OpenAI client
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# ElevenLabs client
+eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
+
+# Cloudinary config
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
     api_key=os.getenv("CLOUDINARY_API_KEY"),
-    api_secret=os.getenv("CLOUDINARY_API_SECRET")
+    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
 )
 
-# ElevenLabs client setup
-eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
-voice = Voice(voice_id="YUdpWWny7k5yb4QCeweX")
-text_to_speech = TextToSpeech(client=eleven_client)
+@app.post("/ask")
+async def ask_question(request: Request):
+    data = await request.json()
+    user_input = data.get("message", "")
+
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "Je bent een behulpzame Nederlandse assistent."},
+            {"role": "user", "content": user_input},
+        ]
+    )
+    reply = response.choices[0].message.content
+
+    tts = TextToSpeech()
+    audio = tts.convert(
+        text=reply,
+        voice=os.getenv("ELEVEN_VOICE_ID", "YUdpWWny7k5yb4QCeweX"),  # Ruth
+        model_id="eleven_multilingual_v2",
+        output_format="mp3"
+    )
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
+        tmp.write(audio)
+        tmp_path = tmp.name
+
+    upload_result = cloudinary.uploader.upload(tmp_path, resource_type="video")
+    audio_url = upload_result.get("secure_url")
+
+    return JSONResponse(content={"audio_url": audio_url, "reply": reply})
 
 @app.post("/upload_url")
-async def upload_url(request: Request, url: str = Form(...)):
-    try:
-        # Fetch content
-        html = requests.get(url).text
+async def upload_url(url: str = Form(...)):
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "Vat de pagina samen in één zin."},
+            {"role": "user", "content": f"Samenvatting van deze pagina: {url}"},
+        ]
+    )
+    summary = response.choices[0].message.content
 
-        # Genereer antwoordtekst
-        antwoord = "Ik heb de pagina gevonden en zal de inhoud verwerken."
+    tts = TextToSpeech()
+    audio = tts.convert(
+        text=summary,
+        voice=os.getenv("ELEVEN_VOICE_ID", "YUdpWWny7k5yb4QCeweX"),  # Ruth
+        model_id="eleven_multilingual_v2",
+        output_format="mp3"
+    )
 
-        # Genereer audio
-        audio_stream = text_to_speech.convert(
-            voice=voice,
-            model="eleven_multilingual_v2",
-            text=antwoord,
-        )
-        audio_bytes = b"".join(audio_stream)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
+        tmp.write(audio)
+        tmp_path = tmp.name
 
-        # Upload naar Cloudinary
-        upload_result = cloudinary.uploader.upload(
-            audio_bytes,
-            resource_type="video",
-            format="mp3"
-        )
+    upload_result = cloudinary.uploader.upload(tmp_path, resource_type="video")
+    audio_url = upload_result.get("secure_url")
 
-        return {"url": upload_result["secure_url"]}
-
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+    return JSONResponse(content={"audio_url": audio_url, "summary": summary})
