@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from openai import OpenAI
 from elevenlabs.client import ElevenLabs
-from elevenlabs import text_to_speech
 import tempfile
 import os
 import cloudinary
@@ -34,32 +33,32 @@ cloudinary.config(
 @app.post("/ask")
 async def ask(file: UploadFile = File(...), session_id: str = Form(...)):
     try:
-        # Audio opslaan
+        # 1. Audio opslaan
         with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
             tmp.write(await file.read())
             tmp_path = tmp.name
 
-        # Whisper → tekst
+        # 2. Whisper → tekst
         transcription = client.audio.transcriptions.create(
             model="whisper-1",
             file=open(tmp_path, "rb")
         )
         prompt = transcription.text
 
-        # GPT → antwoord
+        # 3. GPT → antwoord
         chat_response = client.chat.completions.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}]
         )
         answer = chat_response.choices[0].message.content
 
-        # ElevenLabs → spraak
-        audio = text_to_speech.convert(
+        # 4. ElevenLabs → audio
+        audio = eleven_client.generate(
             text=answer,
-            voice_id="YUdpWWny7k5yb4QCeweX"  # Ruth – Nederlands
+            voice_id="YUdpWWny7k5yb4QCeweX"
         )
 
-        # Opslaan en upload naar Cloudinary
+        # 5. Upload naar Cloudinary
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as out:
             out.write(audio)
             out_path = out.name
@@ -83,7 +82,7 @@ async def upload_url(request: Request):
 
         response_text = f"Ik heb de website {url} genoteerd. Dank je wel!"
 
-        audio = text_to_speech.convert(
+        audio = eleven_client.generate(
             text=response_text,
             voice_id="YUdpWWny7k5yb4QCeweX"
         )
