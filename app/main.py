@@ -11,8 +11,7 @@ from bs4 import BeautifulSoup
 import io
 import traceback
 import cloudinary.uploader
-from elevenlabs.client import ElevenLabs
-from elevenlabs import Voice
+from elevenlabs.client import ElevenLabs, VoiceSettings
 
 app = FastAPI()
 
@@ -59,14 +58,15 @@ async def upload_url(request: Request):
         # Tijdelijk testantwoord (bypass GPT)
         reply = "Welkom bij HandjeHelpen. Wij zetten vrijwilligers in om mensen te ondersteunen."
 
-        audio_stream = eleven_client.generate(
-            text=reply,
-            voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),  # Eva
-            model="eleven_multilingual_v2",
-            output_format="mp3_44100_128"
+        audio_stream = eleven_client.text_to_speech.convert(
+            voice_id="YUdpWWny7k5yb4QCeweX",  # Ruth
+            model_id="eleven_multilingual_v2",
+            voice_settings=VoiceSettings(stability=0.4, similarity_boost=0.75),
+            output_format="mp3_44100_128",
+            text=reply
         )
 
-        audio_bytes = b"".join(audio_stream)
+        audio_bytes = audio_stream.read()
 
         upload = cloudinary.uploader.upload(
             io.BytesIO(audio_bytes),
@@ -111,14 +111,15 @@ async def ask(request: Request):
 
         reply = response["choices"][0]["message"]["content"]
 
-        audio_stream = eleven_client.generate(
-            text=reply,
-            voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),  # Eva
-            model="eleven_multilingual_v2",
-            output_format="mp3_44100_128"
+        audio_stream = eleven_client.text_to_speech.convert(
+            voice_id="YUdpWWny7k5yb4QCeweX",  # Ruth
+            model_id="eleven_multilingual_v2",
+            voice_settings=VoiceSettings(stability=0.4, similarity_boost=0.75),
+            output_format="mp3_44100_128",
+            text=reply
         )
 
-        audio_bytes = b"".join(audio_stream)
+        audio_bytes = audio_stream.read()
 
         upload = cloudinary.uploader.upload(
             io.BytesIO(audio_bytes),
