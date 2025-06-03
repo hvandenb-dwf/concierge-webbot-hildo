@@ -1,29 +1,24 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, UploadFile, File, Form, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 from elevenlabs.client import ElevenLabs
-from elevenlabs import Voice
+from elevenlabs import text_to_speech
+import tempfile
 import cloudinary
 import cloudinary.uploader
-import tempfile
 import os
 
 app = FastAPI()
 
-# CORS
-origins = [
-    "https://concierge-frontend-dng1.onrender.com",
-]
+# CORS voor frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
+    allow_origins=["*"],  # Of specifieker: ["https://concierge-frontend-dng1.onrender.com"]
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Clients
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
 
@@ -32,67 +27,72 @@ cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
     api_key=os.getenv("CLOUDINARY_API_KEY"),
     api_secret=os.getenv("CLOUDINARY_API_SECRET"),
-    secure=True,
 )
 
-# Voice settings
-voice = Voice(voice_id="YUdpWWny7k5yb4QCeweX")  # Ruth
+@app.post("/ask")
+async def ask(file: UploadFile = File(...), session_id: str = Form(...)):
+    try:
+        # 1. Opslaan audio
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
+            tmp.write(await file.read())
+            tmp_path = tmp.name
 
-def upload_to_cloudinary(file_path):
-    result = cloudinary.uploader.upload(file_path, resource_type="video")
-    return result["secure_url"]
+        # 2. Whisper → tekst
+        transcription = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=open(tmp_path, "rb")
+        )
+        prompt = transcription.text
+
+        # 3. GPT → antwoord
+        chat_response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        answer = chat_response.choices[0].message.content
+
+        # 4. ElevenLabs → audio
+        audio = text_to_speech.convert(
+            text=answer,
+            voice_id="YUdpWWny7k5yb4QCeweX"  # Ruth
+        )
+
+        # 5. Upload naar Cloudinary
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as out:
+            out.write(audio)
+            out_path = out.name
+
+        upload_result = cloudinary.uploader.upload(out_path, resource_type="video")
+        audio_url = upload_result.get("secure_url")
+
+        return {"audio_url": audio_url}
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.post("/upload_url")
-async def upload_url():
-    try:
-        audio_stream = eleven_client.text_to_speech.convert(
-            voice=voice,
-            model="eleven_multilingual_v2",
-            text="Hallo! Ik ben je digitale assistent. Hoe kan ik je helpen?"
-        )
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
-            tmp.write(audio_stream)
-            tmp_path = tmp.name
-
-        cloudinary_url = upload_to_cloudinary(tmp_path)
-        os.remove(tmp_path)
-        return {"cloudinary_url": cloudinary_url}
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.post("/ask")
-async def ask(request: Request):
+async def upload_url(request: Request):
     try:
         data = await request.json()
-        user_input = data.get("question", "")
-        if not user_input:
-            return {"error": "No question provided."}
+        url = data.get("url")
+        session_id = data.get("session_id")
 
-        gpt_response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "Je bent een behulpzame Nederlandse digitale assistent."},
-                {"role": "user", "content": user_input},
-            ]
+        # Basic bevestiging
+        response_text = f"Ik heb de website {url} genoteerd."
+
+        # ElevenLabs → audio
+        audio = text_to_speech.convert(
+            text=response_text,
+            voice_id="YUdpWWny7k5yb4QCeweX"
         )
-        bot_reply = gpt_response.choices[0].message.content
 
-        audio_stream = eleven_client.text_to_speech.convert(
-            voice=voice,
-            model="eleven_multilingual_v2",
-            text=bot_reply
-        )
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
-            tmp.write(audio_stream)
-            tmp_path = tmp.name
+        # Upload naar Cloudinary
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as out:
+            out.write(audio)
+            out_path = out.name
 
-        cloudinary_url = upload_to_cloudinary(tmp_path)
-        os.remove(tmp_path)
-        return {"answer": bot_reply, "cloudinary_url": cloudinary_url}
+        upload_result = cloudinary.uploader.upload(out_path, resource_type="video")
+        audio_url = upload_result.get("secure_url")
 
+        return {"audio_url": audio_url}
     except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/")
-async def root():
-    return HTMLResponse("<h1>Backend is actief</h1>")
+        return JSONResponse(content={"error": str(e)}, status_code=500)
