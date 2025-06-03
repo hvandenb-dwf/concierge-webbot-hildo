@@ -18,7 +18,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://concierge-frontend-dng1.onrender.com"],  # alleen jouw frontend
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -56,10 +56,9 @@ async def upload_url(request: Request):
 
         print("✅ Upload data ontvangen:", data)
 
-        # Tijdelijke vaste reactie (voor testen)
         reply = "Welkom bij HandjeHelpen. Wij zetten vrijwilligers in om mensen te ondersteunen."
 
-        audio_stream = eleven_client.text_to_speech.convert(
+        audio_stream = eleven_client.generate(
             text=reply,
             voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),
             model="eleven_multilingual_v2",
@@ -106,12 +105,15 @@ async def ask(request: Request):
             messages=[
                 {"role": "system", "content": "Je bent een vriendelijke en behulpzame assistent die spreekt in het Nederlands."},
                 {"role": "user", "content": user_input},
-            ]
+            ],
+            temperature=0.7,
+            top_p=1.0,
+            max_tokens=500
         )
 
         reply = response["choices"][0]["message"]["content"]
 
-        audio_stream = eleven_client.text_to_speech.convert(
+        audio_stream = eleven_client.generate(
             text=reply,
             voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),
             model="eleven_multilingual_v2",
