@@ -1,94 +1,93 @@
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-import os
+from pydantic import BaseModel
 from openai import OpenAI
-from elevenlabs.client import ElevenLabs, TextToSpeech
+from uuid import uuid4
 import cloudinary
 import cloudinary.uploader
-import uuid
-import tempfile
+from elevenlabs import ElevenLabs, TextToSpeech
+import os
 import requests
 
+# === Initialisatie ===
 app = FastAPI()
 
-# CORS config
+# === CORS instellingen ===
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Voor productie: beperk dit tot je frontend domein
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# OpenAI client
+# === OpenAI client ===
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# ElevenLabs client
+# === ElevenLabs client ===
 eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
+tts = TextToSpeech(client=eleven_client)
 
-# Cloudinary config
+# === Cloudinary configuratie ===
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
     api_key=os.getenv("CLOUDINARY_API_KEY"),
     api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+    secure=True,
 )
 
+# === Request body model ===
+class AskRequest(BaseModel):
+    text: str
+
+# === Endpoint: /ask ===
 @app.post("/ask")
-async def ask_question(request: Request):
-    data = await request.json()
-    user_input = data.get("message", "")
-
+async def ask(req: AskRequest):
+    # Genereer antwoord via OpenAI
     response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": "Je bent een behulpzame Nederlandse assistent."},
-            {"role": "user", "content": user_input},
-        ]
+        model="gpt-4o",
+        messages=[{"role": "user", "content": req.text}],
     )
-    reply = response.choices[0].message.content
+    answer = response.choices[0].message.content
 
-    tts = TextToSpeech()
+    # Converteer tekst naar audio via ElevenLabs
     audio = tts.convert(
-        text=reply,
-        voice=os.getenv("ELEVEN_VOICE_ID", "YUdpWWny7k5yb4QCeweX"),  # Ruth
+        voice_id="YUdpWWny7k5yb4QCeweX",
         model_id="eleven_multilingual_v2",
-        output_format="mp3"
+        text=answer,
     )
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
-        tmp.write(audio)
-        tmp_path = tmp.name
+    # Upload naar Cloudinary
+    temp_filename = f"/tmp/{uuid4()}.mp3"
+    with open(temp_filename, "wb") as f:
+        f.write(audio)
+    result = cloudinary.uploader.upload(temp_filename, resource_type="video")
 
-    upload_result = cloudinary.uploader.upload(tmp_path, resource_type="video")
-    audio_url = upload_result.get("secure_url")
+    return {"audio_url": result["secure_url"], "text": answer}
 
-    return JSONResponse(content={"audio_url": audio_url, "reply": reply})
-
+# === Endpoint: /upload_url ===
 @app.post("/upload_url")
 async def upload_url(url: str = Form(...)):
+    # Genereer vaste reactie
     response = client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o",
         messages=[
-            {"role": "system", "content": "Vat de pagina samen in één zin."},
-            {"role": "user", "content": f"Samenvatting van deze pagina: {url}"},
-        ]
+            {"role": "user", "content": f"Bekijk deze pagina: {url}. Vat samen in het Nederlands."}
+        ],
     )
-    summary = response.choices[0].message.content
+    answer = response.choices[0].message.content
 
-    tts = TextToSpeech()
+    # Zet om naar audio
     audio = tts.convert(
-        text=summary,
-        voice=os.getenv("ELEVEN_VOICE_ID", "YUdpWWny7k5yb4QCeweX"),  # Ruth
+        voice_id="YUdpWWny7k5yb4QCeweX",
         model_id="eleven_multilingual_v2",
-        output_format="mp3"
+        text=answer,
     )
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
-        tmp.write(audio)
-        tmp_path = tmp.name
+    # Upload naar Cloudinary
+    temp_filename = f"/tmp/{uuid4()}.mp3"
+    with open(temp_filename, "wb") as f:
+        f.write(audio)
+    result = cloudinary.uploader.upload(temp_filename, resource_type="video")
 
-    upload_result = cloudinary.uploader.upload(tmp_path, resource_type="video")
-    audio_url = upload_result.get("secure_url")
-
-    return JSONResponse(content={"audio_url": audio_url, "summary": summary})
+    return {"audio_url": result["secure_url"], "text": answer}
