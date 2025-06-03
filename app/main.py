@@ -1,97 +1,61 @@
-from fastapi import FastAPI, UploadFile, File, Form, Request
+from fastapi import FastAPI, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from openai import OpenAI
-from elevenlabs.client import ElevenLabs
-import tempfile
-import os
+import requests
 import cloudinary
 import cloudinary.uploader
+from elevenlabs.client import ElevenLabs
+from elevenlabs import Voice
+from elevenlabs import TextToSpeech
+import os
 
 app = FastAPI()
 
-# ✅ CORS voor frontend op Render
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://concierge-frontend-dng1.onrender.com"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ✅ API clients
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
-
-# ✅ Cloudinary config
+# Setup Cloudinary
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
     api_key=os.getenv("CLOUDINARY_API_KEY"),
-    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET")
 )
 
-@app.post("/ask")
-async def ask(file: UploadFile = File(...), session_id: str = Form(...)):
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
-            tmp.write(await file.read())
-            tmp_path = tmp.name
-
-        transcription = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=open(tmp_path, "rb")
-        )
-        prompt = transcription.text
-
-        chat_response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        answer = chat_response.choices[0].message.content
-
-        audio = eleven_client.text_to_speech.convert(
-            text=answer,
-            voice_id="YUdpWWny7k5yb4QCeweX"
-        )
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as out:
-            out.write(audio)
-            out_path = out.name
-
-        upload_result = cloudinary.uploader.upload(out_path, resource_type="video")
-        audio_url = upload_result.get("secure_url")
-
-        return {"audio_url": audio_url}
-
-    except Exception as e:
-        print(f"❌ Fout in /ask: {e}")
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+# ElevenLabs client setup
+eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
+voice = Voice(voice_id="YUdpWWny7k5yb4QCeweX")
+text_to_speech = TextToSpeech(client=eleven_client)
 
 @app.post("/upload_url")
-async def upload_url(request: Request):
+async def upload_url(request: Request, url: str = Form(...)):
     try:
-        data = await request.json()
-        url = data.get("url")
-        session_id = data.get("session_id")
-        print(f"🔍 URL ontvangen: {url}, session_id: {session_id}")
+        # Fetch content
+        html = requests.get(url).text
 
-        response_text = f"Ik heb de website {url} genoteerd. Dank je wel!"
+        # Genereer antwoordtekst
+        antwoord = "Ik heb de pagina gevonden en zal de inhoud verwerken."
 
-        audio = eleven_client.text_to_speech.convert(
-            text=response_text,
-            voice_id="YUdpWWny7k5yb4QCeweX"
+        # Genereer audio
+        audio_stream = text_to_speech.convert(
+            voice=voice,
+            model="eleven_multilingual_v2",
+            text=antwoord,
+        )
+        audio_bytes = b"".join(audio_stream)
+
+        # Upload naar Cloudinary
+        upload_result = cloudinary.uploader.upload(
+            audio_bytes,
+            resource_type="video",
+            format="mp3"
         )
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as out:
-            out.write(audio)
-            out_path = out.name
-
-        upload_result = cloudinary.uploader.upload(out_path, resource_type="video")
-        audio_url = upload_result.get("secure_url")
-        print(f"✅ Cloudinary audio_url: {audio_url}")
-
-        return {"audio_url": audio_url}
+        return {"url": upload_result["secure_url"]}
 
     except Exception as e:
-        print(f"❌ Fout in /upload_url: {e}")
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+        return JSONResponse(status_code=500, content={"error": str(e)})
