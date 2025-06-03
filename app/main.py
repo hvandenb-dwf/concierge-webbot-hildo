@@ -33,32 +33,27 @@ cloudinary.config(
 @app.post("/ask")
 async def ask(file: UploadFile = File(...), session_id: str = Form(...)):
     try:
-        # 1. Audio opslaan
         with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
             tmp.write(await file.read())
             tmp_path = tmp.name
 
-        # 2. Whisper → tekst
         transcription = client.audio.transcriptions.create(
             model="whisper-1",
             file=open(tmp_path, "rb")
         )
         prompt = transcription.text
 
-        # 3. GPT → antwoord
         chat_response = client.chat.completions.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}]
         )
         answer = chat_response.choices[0].message.content
 
-        # 4. ElevenLabs → audio
-        audio = eleven_client.generate(
+        audio = eleven_client.text_to_speech.convert(
             text=answer,
             voice_id="YUdpWWny7k5yb4QCeweX"
         )
 
-        # 5. Upload naar Cloudinary
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as out:
             out.write(audio)
             out_path = out.name
@@ -82,7 +77,7 @@ async def upload_url(request: Request):
 
         response_text = f"Ik heb de website {url} genoteerd. Dank je wel!"
 
-        audio = eleven_client.generate(
+        audio = eleven_client.text_to_speech.convert(
             text=response_text,
             voice_id="YUdpWWny7k5yb4QCeweX"
         )
