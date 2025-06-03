@@ -12,13 +12,13 @@ import io
 import traceback
 import cloudinary.uploader
 from elevenlabs.client import ElevenLabs
-from elevenlabs import Voice
+from elevenlabs import Voice, text_to_speech
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://concierge-frontend-dng1.onrender.com"],  # alleen jouw frontend
+    allow_origins=["https://concierge-frontend-dng1.onrender.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -56,11 +56,12 @@ async def upload_url(request: Request):
 
         print("✅ Upload data ontvangen:", data)
 
+        # Tijdelijk testantwoord (bypass GPT)
         reply = "Welkom bij HandjeHelpen. Wij zetten vrijwilligers in om mensen te ondersteunen."
 
-        audio_stream = eleven_client.generate(
+        audio_stream = text_to_speech.convert(
             text=reply,
-            voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),
+            voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),  # Eva
             model="eleven_multilingual_v2",
             output_format="mp3_44100_128"
         )
@@ -105,17 +106,14 @@ async def ask(request: Request):
             messages=[
                 {"role": "system", "content": "Je bent een vriendelijke en behulpzame assistent die spreekt in het Nederlands."},
                 {"role": "user", "content": user_input},
-            ],
-            temperature=0.7,
-            top_p=1.0,
-            max_tokens=500
+            ]
         )
 
         reply = response["choices"][0]["message"]["content"]
 
-        audio_stream = eleven_client.generate(
+        audio_stream = text_to_speech.convert(
             text=reply,
-            voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),
+            voice=Voice(voice_id="YUdpWWny7k5yb4QCeweX"),  # Eva
             model="eleven_multilingual_v2",
             output_format="mp3_44100_128"
         )
