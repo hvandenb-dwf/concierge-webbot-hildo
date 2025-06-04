@@ -5,7 +5,8 @@ from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from openai import OpenAI
 from elevenlabs.client import ElevenLabs
-from elevenlabs import Voice, TextToSpeech
+from elevenlabs.tts import TextToSpeech
+from elevenlabs import Voice
 from cloudinary.uploader import upload as cloudinary_upload
 from cloudinary.utils import cloudinary_url
 import os
@@ -26,9 +27,9 @@ app.add_middleware(
 
 # Clients
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-VOICE_ID = os.getenv("ELEVEN_VOICE_ID")
 eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
 tts = TextToSpeech(client=eleven_client)
+VOICE_ID = os.getenv("ELEVEN_VOICE_ID")
 
 @app.post("/upload_url")
 async def upload_url(request: Request):
@@ -37,8 +38,8 @@ async def upload_url(request: Request):
     if not url:
         return JSONResponse(content={"error": "Missing 'url'"}, status_code=400)
 
-    text = f"Bedankt voor het insturen van deze website. Ik heb '{url}' ontvangen en zal het bekijken."
-    audio = tts.convert(text=text, voice=Voice(voice_id=VOICE_ID))
+    tekst = f"Bedankt voor het insturen van deze website. Ik heb '{url}' ontvangen en zal het bekijken."
+    audio = tts.convert(text=tekst, voice=Voice(voice_id=VOICE_ID))
 
     filename = f"{uuid.uuid4()}.mp3"
     with open(filename, "wb") as f:
@@ -49,6 +50,7 @@ async def upload_url(request: Request):
     os.remove(filename)
 
     return JSONResponse(content={"audio_url": audio_url})
+
 
 @app.post("/ask")
 async def ask(request: Request):
