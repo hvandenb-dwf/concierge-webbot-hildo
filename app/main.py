@@ -1,15 +1,25 @@
-from fastapi import FastAPI, Request, Form
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from openai import OpenAI
-from elevenlabs import ElevenLabs
+from elevenlabs.client import ElevenLabs
+from elevenlabs import Voice
 import cloudinary
 import cloudinary.uploader
 import os
-import uuid
-import tempfile
+from uuid import uuid4
 
-# === CONFIGURATIE ===
+# === INIT ===
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
 
@@ -17,70 +27,52 @@ cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
     api_key=os.getenv("CLOUDINARY_API_KEY"),
     api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+    secure=True
 )
 
-VOICE_ID = "pNInz6obpgDQGcFmaJgB"  # Ruth
-MODEL_ID = "eleven_multilingual_v2"
-OUTPUT_FORMAT = "mp3_44100"
+VOICE_ID = os.getenv("ELEVEN_VOICE_ID", "pNInz6obpgDQGcFmaJgB")
 
-# === FASTAPI SETUP ===
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Update eventueel voor striktere beveiliging
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# === HELPER FUNCTIES ===
-def generate_response(prompt: str) -> str:
-    chat_completion = client.chat.completions.create(
-        messages=[
-            {"role": "system", "content": "Je bent een behulpzame Nederlandse conciërge."},
-            {"role": "user", "content": prompt},
-        ],
-        model="gpt-4",
-    )
-    return chat_completion.choices[0].message.content.strip()
-
+# === UTILS ===
 def synthesize_audio(text: str) -> str:
     audio = eleven_client.text_to_speech.convert(
-        voice_id=VOICE_ID,
-        text=text,
-        model_id=MODEL_ID,
-        output_format=OUTPUT_FORMAT
+        voice=Voice(voice_id=VOICE_ID),
+        model="eleven_multilingual_v2",
+        text=text
     )
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
+
+    filename = f"speech_{uuid4().hex}.mp3"
+    with open(filename, "wb") as f:
         f.write(audio)
-        temp_path = f.name
 
-    result = cloudinary.uploader.upload(temp_path, resource_type="video")
-    os.remove(temp_path)
-
-    return result["secure_url"]
+    upload = cloudinary.uploader.upload(filename, resource_type="video")
+    os.remove(filename)
+    return upload["secure_url"]
 
 # === ROUTES ===
-@app.post("/ask")
-async def ask(request: Request):
-    data = await request.json()
-    prompt = data.get("prompt", "")
+@app.get("/")
+def read_root():
+    return {"message": "Webbot backend active."}
 
-    if not prompt:
-        return JSONResponse(status_code=400, content={"error": "Geen prompt ontvangen."})
-
+@app.post("/upload_url")
+async def upload_url(prompt: str = Form(...)):
     try:
-        text_reply = generate_response(prompt)
-        audio_url = synthesize_audio(text_reply)
-
-        return {
-            "text": text_reply,
-            "audio_url": audio_url
-        }
+        audio_url = synthesize_audio(prompt)
+        return {"audio_url": audio_url}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-@app.get("/")
-def root():
-    return {"message": "Voicebot backend is live."}
+@app.post("/ask")
+async def ask(prompt: str = Form(...)):
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "Je bent een behulpzame Nederlandse assistent."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        answer = response.choices[0].message.content
+        audio_url = synthesize_audio(answer)
+        return {"answer": answer, "audio_url": audio_url}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
