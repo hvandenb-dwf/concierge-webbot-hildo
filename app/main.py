@@ -1,12 +1,11 @@
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from openai import OpenAI
 from elevenlabs.client import ElevenLabs
-from elevenlabs import Voice
-from elevenlabs.api import TextToSpeech
+from elevenlabs import Voice, TextToSpeech
 from cloudinary.uploader import upload as cloudinary_upload
 from cloudinary.utils import cloudinary_url
 import os
