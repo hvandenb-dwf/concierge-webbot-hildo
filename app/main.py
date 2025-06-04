@@ -1,22 +1,22 @@
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from openai import OpenAI
 from elevenlabs.client import ElevenLabs
+from elevenlabs import Voice, TTS
 from cloudinary.uploader import upload as cloudinary_upload
 from cloudinary.utils import cloudinary_url
 import os
 import uuid
 
-# Load environment variables
 load_dotenv()
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# CORS instellingen
+# CORS configuratie
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,7 +25,7 @@ app.add_middleware(
 )
 
 # Clients
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
 VOICE_ID = os.getenv("ELEVEN_VOICE_ID")
 
@@ -37,17 +37,16 @@ async def upload_url(request: Request):
         return JSONResponse(content={"error": "Missing 'url'"}, status_code=400)
 
     text = f"Bedankt voor het insturen van deze website. Ik heb '{url}' ontvangen en zal het bekijken."
-    audio = eleven_client.generate(
-        text=text,
-        voice=VOICE_ID
-    )
+
+    tts = TTS(voice=Voice(voice_id=VOICE_ID), model="eleven_multilingual_v2", optimize_streaming_latency=4)
+    audio_bytes = eleven_client.generate(text, tts=tts)
 
     filename = f"{uuid.uuid4()}.mp3"
     with open(filename, "wb") as f:
-        f.write(audio)
+        f.write(audio_bytes)
 
-    cloudinary_result = cloudinary_upload(filename, resource_type="video")
-    audio_url, _ = cloudinary_url(cloudinary_result["public_id"], resource_type="video")
+    upload_result = cloudinary_upload(filename, resource_type="video")
+    audio_url, _ = cloudinary_url(upload_result["public_id"], resource_type="video")
 
     os.remove(filename)
 
@@ -62,23 +61,21 @@ async def ask(request: Request):
     if not prompt:
         return JSONResponse(content={"error": "Missing prompt"}, status_code=400)
 
-    completion = client.chat.completions.create(
+    completion = openai_client.chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
         model="gpt-4"
     )
     reply = completion.choices[0].message.content
 
-    audio = eleven_client.generate(
-        text=reply,
-        voice=VOICE_ID
-    )
+    tts = TTS(voice=Voice(voice_id=VOICE_ID), model="eleven_multilingual_v2", optimize_streaming_latency=4)
+    audio_bytes = eleven_client.generate(text=reply, tts=tts)
 
     filename = f"{uuid.uuid4()}.mp3"
     with open(filename, "wb") as f:
-        f.write(audio)
+        f.write(audio_bytes)
 
-    cloudinary_result = cloudinary_upload(filename, resource_type="video")
-    audio_url, _ = cloudinary_url(cloudinary_result["public_id"], resource_type="video")
+    upload_result = cloudinary_upload(filename, resource_type="video")
+    audio_url, _ = cloudinary_url(upload_result["public_id"], resource_type="video")
 
     os.remove(filename)
 
