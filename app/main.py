@@ -5,7 +5,8 @@ from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from openai import OpenAI
 from elevenlabs.client import ElevenLabs
-from elevenlabs import Voice, TTS
+from elevenlabs.tts import TTS
+from elevenlabs import Voice
 from cloudinary.uploader import upload as cloudinary_upload
 from cloudinary.utils import cloudinary_url
 import os
