@@ -1,29 +1,39 @@
 from fastapi import FastAPI, UploadFile, Form
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from openai import OpenAI
 from elevenlabs.client import ElevenLabs
-from elevenlabs import text_to_speech
+from elevenlabs import Voice, TextToSpeech
 import cloudinary
 import cloudinary.uploader
 import os
 import tempfile
-from uuid import uuid4
-
-# ========== INIT ==========
 
 app = FastAPI()
 
+# CORS zodat frontend toegang heeft
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Pas eventueel aan naar specifieke domeinen
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Load API keys
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
-VOICE_ID = "pNInz6obpgDQGcFmaJgB"  # Ruth
+
+eleven_client = ElevenLabs(
+    api_key=os.getenv("ELEVEN_API_KEY")
+)
+
+voice = Voice(
+    voice_id=os.getenv("VOICE_ID"),  # bv. "pNInz6obpgDQGcFmaJgB"
+    stability=0.3,
+    similarity_boost=0.8,
+)
+
+text_to_speech = TextToSpeech(client=eleven_client)
 
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
@@ -31,71 +41,67 @@ cloudinary.config(
     api_secret=os.getenv("CLOUDINARY_API_SECRET")
 )
 
-# ========== /UPLOAD_URL ==========
 
 @app.post("/upload_url")
 async def upload_url(url: str = Form(...), session_id: str = Form(...)):
-    prompt = f"Geef een vriendelijke samenvatting in het Nederlands van wat je vindt op {url}."
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4",
         messages=[
-            {"role": "system", "content": "Je bent een behulpzame Nederlandse voice-assistent."},
-            {"role": "user", "content": prompt}
+            {"role": "system", "content": "Je bent een behulpzame voice-assistent die mensen helpt informatie van websites samen te vatten."},
+            {"role": "user", "content": f"Geef een korte en duidelijke uitleg over deze website: {url}"}
         ]
     )
-    text = response.choices[0].message.content.strip()
 
-    audio = text_to_speech.convert(
-        voice_id=VOICE_ID,
-        model_id="eleven_multilingual_v2",
-        text=text
-    )
+    text = response.choices[0].message.content
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp:
-        temp.write(audio)
-        temp_path = temp.name
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
+        tmp.write(text_to_speech.convert(
+            voice=voice,
+            model="eleven_multilingual_v2",
+            text=text
+        ))
+        tmp_path = tmp.name
 
-    upload_result = cloudinary.uploader.upload(temp_path, resource_type="video")
+    upload_result = cloudinary.uploader.upload(tmp_path, resource_type="video")
     audio_url = upload_result["secure_url"]
 
-    return JSONResponse(content={"text": text, "audio_url": audio_url})
+    return JSONResponse(content={"audio_url": audio_url, "text": text})
 
-
-# ========== /ASK ==========
 
 @app.post("/ask")
 async def ask(audio: UploadFile, session_id: str = Form(...)):
+    # Opslaan van audio en Whisper-transcriptie
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
-        tmp.write(await audio.read())
+        content = await audio.read()
+        tmp.write(content)
         tmp_path = tmp.name
 
-    transcript_response = client.audio.transcriptions.create(
+    transcript = client.audio.transcriptions.create(
         model="whisper-1",
-        file=open(tmp_path, "rb"),
-        response_format="text"
+        file=open(tmp_path, "rb")
     )
-    user_input = transcript_response.strip()
+
+    user_input = transcript.text
 
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4",
         messages=[
-            {"role": "system", "content": "Je bent een behulpzame Nederlandse voice-assistent."},
+            {"role": "system", "content": "Je bent een vriendelijke Nederlandstalige voice-assistent."},
             {"role": "user", "content": user_input}
         ]
     )
-    reply = response.choices[0].message.content.strip()
 
-    audio = text_to_speech.convert(
-        voice_id=VOICE_ID,
-        model_id="eleven_multilingual_v2",
-        text=reply
-    )
+    text = response.choices[0].message.content
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp:
-        temp.write(audio)
-        temp_path = temp.name
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_out:
+        tmp_out.write(text_to_speech.convert(
+            voice=voice,
+            model="eleven_multilingual_v2",
+            text=text
+        ))
+        tmp_out_path = tmp_out.name
 
-    upload_result = cloudinary.uploader.upload(temp_path, resource_type="video")
+    upload_result = cloudinary.uploader.upload(tmp_out_path, resource_type="video")
     audio_url = upload_result["secure_url"]
 
-    return JSONResponse(content={"text": reply, "audio_url": audio_url})
+    return JSONResponse(content={"audio_url": audio_url, "text": text})
