@@ -4,18 +4,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from openai import OpenAI
-from elevenlabs import text_to_speech, Voice
+from elevenlabs.client import ElevenLabs
 from cloudinary.uploader import upload as cloudinary_upload
 from cloudinary.utils import cloudinary_url
 import os
 import uuid
 
+# Load environment variables
 load_dotenv()
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# CORS configuratie
+# CORS instellingen
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,6 +26,7 @@ app.add_middleware(
 
 # Clients
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
 VOICE_ID = os.getenv("ELEVEN_VOICE_ID")
 
 @app.post("/upload_url")
@@ -35,9 +37,9 @@ async def upload_url(request: Request):
         return JSONResponse(content={"error": "Missing 'url'"}, status_code=400)
 
     text = f"Bedankt voor het insturen van deze website. Ik heb '{url}' ontvangen en zal het bekijken."
-    audio = text_to_speech.convert(
+    audio = eleven_client.generate(
         text=text,
-        voice=Voice(voice_id=VOICE_ID)
+        voice=VOICE_ID
     )
 
     filename = f"{uuid.uuid4()}.mp3"
@@ -50,6 +52,7 @@ async def upload_url(request: Request):
     os.remove(filename)
 
     return JSONResponse(content={"audio_url": audio_url})
+
 
 @app.post("/ask")
 async def ask(request: Request):
@@ -65,9 +68,9 @@ async def ask(request: Request):
     )
     reply = completion.choices[0].message.content
 
-    audio = text_to_speech.convert(
+    audio = eleven_client.generate(
         text=reply,
-        voice=Voice(voice_id=VOICE_ID)
+        voice=VOICE_ID
     )
 
     filename = f"{uuid.uuid4()}.mp3"
