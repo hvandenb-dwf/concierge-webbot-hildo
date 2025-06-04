@@ -1,91 +1,115 @@
-from fastapi import FastAPI, UploadFile, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from elevenlabs.client import ElevenLabs
-from elevenlabs import Voice
-from openai import OpenAI
+from fastapi.staticfiles import StaticFiles
 from uuid import uuid4
-import cloudinary
-import requests
 import os
-import hashlib
 import time
-import hmac
+import cloudinary
+import cloudinary.uploader
+from openai import OpenAI
+from elevenlabs.client import ElevenLabs
+from elevenlabs import TextToSpeechClient, Voice, AudioOutputFormat
+from dotenv import load_dotenv
 
+load_dotenv()
+
+# Init FastAPI app
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Load environment vars
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Init clients
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
+tts = TextToSpeechClient(api_key=os.getenv("ELEVEN_API_KEY"))
+
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
     api_key=os.getenv("CLOUDINARY_API_KEY"),
     api_secret=os.getenv("CLOUDINARY_API_SECRET")
 )
 
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-eleven_client = ElevenLabs(api_key=os.getenv("ELEVEN_API_KEY"))
-voice_id = os.getenv("VOICE_ID") or "YUdpWWny7k5yb4QCeweX"  # Ruth
-
-CLOUDINARY_UPLOAD_URL = f"https://api.cloudinary.com/v1_1/{cloudinary.config().cloud_name}/auto/upload"
+voice_id = os.getenv("ELEVEN_VOICE_ID", "pNInz6obpgDQGcFmaJgB")  # default to 'Ruth' if not set
 
 @app.post("/upload_url")
 async def upload_url(request: Request):
-    data = await request.json()
-    url = data.get("url")
-    if not url:
-        return {"error": "No URL provided"}
-    print(f"🌐 URL ontvangen: {url}")
+    try:
+        body = await request.json()
+        url = body.get("url")
+        session_id = body.get("session_id", str(uuid4()))
+        print(f"🌐 URL ontvangen: {url}, session_id: {session_id}")
 
-    # Simuleer reactie
-    text_response = "Ik heb de website bekeken. Wat wil je precies weten?"
-    print(f"🧠 Prompt gegenereerd.")
+        # Simuleer eenvoudige tekstresponse
+        text = "Welkom op de website. Wat kan ik voor je doen?"
 
-    audio = convert_text_to_audio(text_response)
-    audio_url = upload_to_cloudinary(audio)
+        start_time = time.time()
+        audio_bytes = tts.convert(
+            voice=Voice(voice_id=voice_id),
+            model="eleven_multilingual_v2",
+            output_format=AudioOutputFormat.MP3_44100,
+            text=text
+        )
+        print("💬 Prompt gegenereerd.")
 
-    return {"audio_url": audio_url, "response": text_response}
+        # Upload naar Cloudinary
+        temp_filename = f"/tmp/{uuid4()}.mp3"
+        with open(temp_filename, "wb") as f:
+            f.write(audio_bytes)
 
-def convert_text_to_audio(text: str) -> bytes:
-    audio = eleven_client.text_to_speech.convert(
-        voice=Voice(voice_id=voice_id),
-        model="eleven_multilingual_v2",
-        text=text,
-    )
-    return audio.read()
+        result = cloudinary.uploader.upload(temp_filename, resource_type="video")
+        audio_url = result["secure_url"]
+        os.remove(temp_filename)
 
-def upload_to_cloudinary(audio_bytes: bytes, public_id: str = None) -> str:
-    timestamp = int(time.time())
-    params_to_sign = {
-        'timestamp': timestamp,
-        'folder': 'voicebot',
-        'public_id': public_id or str(uuid4()),
-    }
+        return {"audio_url": audio_url, "text": text, "session_id": session_id}
 
-    signature_string = '&'.join([f"{k}={v}" for k, v in sorted(params_to_sign.items())])
-    signature = hmac.new(
-        os.getenv("CLOUDINARY_API_SECRET").encode(),
-        signature_string.encode(),
-        hashlib.sha1
-    ).hexdigest()
+    except Exception as e:
+        print("⚠️ Fout in /upload_url:", e)
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
-    payload = {
-        **params_to_sign,
-        'signature': signature,
-        'api_key': os.getenv("CLOUDINARY_API_KEY")
-    }
 
-    files = {
-        'file': ('response.mp3', audio_bytes, 'audio/mpeg')
-    }
+@app.post("/ask")
+async def ask(request: Request):
+    try:
+        body = await request.json()
+        user_input = body.get("text")
+        session_id = body.get("session_id", str(uuid4()))
+        print(f"📥 Prompt ontvangen: {user_input}, sessie: {session_id}")
 
-    response = requests.post(CLOUDINARY_UPLOAD_URL, data=payload, files=files)
-    response.raise_for_status()
-    print(f"✅ Upload voltooid: {response.json()['secure_url']}")
-    return response.json()["secure_url"]
+        chat_response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "Je bent een behulpzame Nederlandse assistent."},
+                {"role": "user", "content": user_input}
+            ]
+        )
+
+        reply = chat_response.choices[0].message.content
+
+        audio_bytes = tts.convert(
+            voice=Voice(voice_id=voice_id),
+            model="eleven_multilingual_v2",
+            output_format=AudioOutputFormat.MP3_44100,
+            text=reply
+        )
+
+        temp_filename = f"/tmp/{uuid4()}.mp3"
+        with open(temp_filename, "wb") as f:
+            f.write(audio_bytes)
+
+        result = cloudinary.uploader.upload(temp_filename, resource_type="video")
+        audio_url = result["secure_url"]
+        os.remove(temp_filename)
+
+        return {"audio_url": audio_url, "text": reply, "session_id": session_id}
+
+    except Exception as e:
+        print("❌ Fout in /ask:", e)
+        return JSONResponse(status_code=500, content={"error": str(e)})
